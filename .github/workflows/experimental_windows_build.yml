@@ -1,0 +1,117 @@
+name: Experimental SISR Windows Build
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build experimental Windows x64 package
+    runs-on: windows-latest
+    steps:
+      - name: Disable git autocrlf
+        run: |
+          git config --global core.autocrlf false
+          git config --global core.eol lf
+
+      - name: Checkout patched source
+        uses: actions/checkout@v6.0.2
+        with:
+          submodules: recursive
+
+      - name: Setup Go
+        uses: actions/setup-go@v6.4.0
+        with:
+          go-version: stable
+          cache: true
+          cache-dependency-path: go.sum
+
+      - name: Setup Node
+        uses: actions/setup-node@v6.4.0
+        with:
+          node-version: "25"
+          cache: npm
+          cache-dependency-path: |
+            cefpayloads/package-lock.json
+            UI/package-lock.json
+
+      - name: Build CEF payloads
+        working-directory: cefpayloads
+        run: |
+          npm ci
+          npm run build
+
+      - name: Build UI
+        working-directory: UI
+        env:
+          PUBLIC_DEV: "0"
+          PUBLIC_LOG_LEVEL: "info"
+        run: |
+          npm ci
+          npm run build
+
+      - name: Install native build tools
+        shell: pwsh
+        run: |
+          function Install-Tool($id) {
+            winget install -e --id $id --accept-package-agreements --accept-source-agreements --disable-interactivity
+            if ($LASTEXITCODE -eq 0 -or $LASTEXITCODE -eq -1978335189 -or $LASTEXITCODE -eq -1978335212) {
+              $global:LASTEXITCODE = 0
+            } else {
+              throw "winget install $id failed with exit code $LASTEXITCODE"
+            }
+          }
+          Install-Tool MartinStorsjo.LLVM-MinGW.UCRT
+          Install-Tool Kitware.CMake
+
+      - name: Setup just
+        uses: extractions/setup-just@v3
+
+      - name: Install Windows resource generator
+        run: go install github.com/josephspurrier/goversioninfo/cmd/goversioninfo@v1.7.0
+
+      - name: Run focused recovery tests
+        shell: bash
+        run: go test -race -count=1 ./input/steaminputbindings ./steam
+
+      - name: Build patched SISR
+        shell: bash
+        env:
+          GOOS: windows
+          GOARCH: amd64
+          CGO_ENABLED: "1"
+          VERSION: keyboard-recovery-test-${{ github.sha }}
+        run: just build Release
+
+      - name: Include VIIPER
+        shell: bash
+        run: |
+          curl -fsSL "https://github.com/Alia5/VIIPER/releases/download/v0.9.0/viiper-windows-amd64.exe" -o dist/viiper.exe
+
+      - name: Add test warning and checksums
+        shell: bash
+        run: |
+          cat > dist/TEST-BUILD-README.txt <<'EOF'
+          EXPERIMENTAL SISR KEYBOARD RECOVERY TEST BUILD
+
+          This build is based on SISR commit cc0a7fef plus keyboard recovery.
+          It has not been tested with your physical Steam Controller.
+
+          Keep your stable installation unchanged. Extract this ZIP to a new
+          folder, fully exit stable SISR, then run SISR.exe from that folder.
+          Never run two SISR instances simultaneously. Do not launch the
+          SISR Marker entry from Steam. Exit this build to roll back.
+          EOF
+          cd dist
+          sha256sum SISR.exe viiper.exe > SHA256SUMS.txt
+          7z a -tzip SISR-KEYBOARD-RECOVERY-TEST-windows-x64.zip SISR.exe viiper.exe '*.dll' TEST-BUILD-README.txt SHA256SUMS.txt
+
+      - name: Upload experimental test build
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: SISR-KEYBOARD-RECOVERY-TEST-windows-x64
+          path: dist/SISR-KEYBOARD-RECOVERY-TEST-windows-x64.zip
+          if-no-files-found: error
+          retention-days: 14
