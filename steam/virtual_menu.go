@@ -16,38 +16,40 @@ import (
 const virtualMenuTargetPrefix = "virtualmenus_uid"
 
 type closeTargetRequest struct {
-	ID     int    `json:"id"`
-	Method string `json:"method"`
+	ID     int                    `json:"id"`
+	Method string                 `json:"method"`
+	Params map[string]interface{} `json:"params,omitempty"`
 }
 
-// CloseVirtualMenuTabs closes only Steam's virtual-menu CEF targets. Steam
-// creates new targets when a menu is activated again.
-func CloseVirtualMenuTabs(ctx context.Context, cfg *config.Steam) error {
+// SetVirtualMenuVisibility hides or restores Steam's virtual-menu CEF targets
+// without closing them. Steam reuses these targets when an action set with a
+// virtual menu becomes active again.
+func SetVirtualMenuVisibility(ctx context.Context, cfg *config.Steam, visible bool) error {
 	tabs, err := GetCEFTabs(ctx, cfg)
 	if err != nil {
 		return err
 	}
-	return closeVirtualMenuTabs(ctx, tabs)
+	return setVirtualMenuTabsVisibility(ctx, tabs, visible)
 }
 
-func closeVirtualMenuTabs(ctx context.Context, tabs []TabInfo) error {
-	var closeErrs []error
+func setVirtualMenuTabsVisibility(ctx context.Context, tabs []TabInfo, visible bool) error {
+	var visibilityErrs []error
 	for _, tab := range tabs {
 		if !isVirtualMenuTab(tab) {
 			continue
 		}
-		if err := closeCEFTarget(ctx, tab.WebSocketDebuggerURL); err != nil {
-			closeErrs = append(closeErrs, fmt.Errorf("close virtual menu target: %w", err))
+		if err := setCEFTargetVisibility(ctx, tab.WebSocketDebuggerURL, visible); err != nil {
+			visibilityErrs = append(visibilityErrs, fmt.Errorf("set virtual menu target visibility: %w", err))
 		}
 	}
-	return errors.Join(closeErrs...)
+	return errors.Join(visibilityErrs...)
 }
 
 func isVirtualMenuTab(tab TabInfo) bool {
 	return strings.HasPrefix(strings.ToLower(tab.Title), virtualMenuTargetPrefix)
 }
 
-func closeCEFTarget(ctx context.Context, debuggerURL string) error {
+func setCEFTargetVisibility(ctx context.Context, debuggerURL string, visible bool) error {
 	u, err := url.Parse(debuggerURL)
 	if err != nil {
 		return err
@@ -65,5 +67,13 @@ func closeCEFTarget(ctx context.Context, debuggerURL string) error {
 		return err
 	}
 	defer conn.CloseNow() //nolint:errcheck
-	return wsjson.Write(ctx, conn, closeTargetRequest{ID: 1, Method: "Page.close"})
+	expression := "document.documentElement.style.setProperty('visibility','hidden','important')"
+	if visible {
+		expression = "document.documentElement.style.removeProperty('visibility')"
+	}
+	return wsjson.Write(ctx, conn, closeTargetRequest{
+		ID:     1,
+		Method: "Runtime.evaluate",
+		Params: map[string]interface{}{"expression": expression},
+	})
 }

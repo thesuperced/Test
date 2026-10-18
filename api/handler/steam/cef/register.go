@@ -8,7 +8,7 @@ import (
 func Register(a huma.API, c *cmd.SISRContext) {
 
 	registerOverlayStateChanged(a, c)
-	registerClearVirtualMenus(a, c)
+	registerVirtualMenuVisibility(a, c)
 	registerInjectOverlayNotifier(a, c)
 	registerCreateMarkerShortcut(a, c)
 	registerOpenConfigurator(a, c)

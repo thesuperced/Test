@@ -76,10 +76,16 @@ __INJECT_RETURN = (async () => {
         if (created === undefined) return;
         const generation = ++virtualMenuGeneration;
         if (virtualMenuTimer) clearTimeout(virtualMenuTimer);
-        if (!created) {
+        if (created) {
+            void client.POST('/api/v1/steam/cef/virtual-menu-visibility', {
+                body: { visible: true }
+            }).catch((e) => console.error('Error restoring virtual menu visibility', e));
+        } else {
             virtualMenuTimer = setTimeout(() => {
                 if (generation !== virtualMenuGeneration) return;
-                void client.POST('/api/v1/steam/cef/clear-virtual-menus')
+                void client.POST('/api/v1/steam/cef/virtual-menu-visibility', {
+                    body: { visible: false }
+                })
                     .catch((e) => console.error('Error clearing stale virtual menus', e));
             }, 300);
         }

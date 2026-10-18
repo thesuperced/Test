@@ -274,6 +274,15 @@ components:
       required:
         - open
       type: object
+    VirtualMenuVisibility:
+      additionalProperties: false
+      properties:
+        visible:
+          description: Whether Steam virtual-menu targets should be visible
+          type: boolean
+      required:
+        - visible
+      type: object
     PingResponse:
       additionalProperties: false
       properties:
@@ -563,9 +572,15 @@ paths:
         - steam
         - cef
         - inject
-  /api/v1/steam/cef/clear-virtual-menus:
+  /api/v1/steam/cef/virtual-menu-visibility:
     post:
-      description: Close stale Steam virtual-menu CEF targets after an action-set change
+      description: Hide or restore Steam virtual-menu CEF targets after an action-set change
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VirtualMenuVisibility"
+        required: true
       responses:
         "204":
           description: No Content

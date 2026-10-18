@@ -11,28 +11,34 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 )
 
-func registerClearVirtualMenus(a huma.API, c *cmd.SISRContext) {
-	huma.Register(a, huma.Operation{
-		Method:      http.MethodPost,
-		Path:        "/api/v1/steam/cef/clear-virtual-menus",
-		Description: "Close stale Steam virtual-menu CEF targets after an action-set change",
-		Tags:        []string{"steam", "cef", "callback"},
-	}, clearVirtualMenus(c))
+type virtualMenuVisibilityInput struct {
+	Body struct {
+		Visible bool `json:"visible" doc:"Whether Steam virtual-menu targets should be visible"`
+	}
 }
 
-func clearVirtualMenus(c *cmd.SISRContext) func(context.Context, *struct{}) (*struct{}, error) {
-	return func(ctx context.Context, _ *struct{}) (*struct{}, error) {
+func registerVirtualMenuVisibility(a huma.API, c *cmd.SISRContext) {
+	huma.Register(a, huma.Operation{
+		Method:      http.MethodPost,
+		Path:        "/api/v1/steam/cef/virtual-menu-visibility",
+		Description: "Hide or restore Steam virtual-menu CEF targets after an action-set change",
+		Tags:        []string{"steam", "cef", "callback"},
+	}, setVirtualMenuVisibility(c))
+}
+
+func setVirtualMenuVisibility(c *cmd.SISRContext) func(context.Context, *virtualMenuVisibilityInput) (*struct{}, error) {
+	return func(ctx context.Context, input *virtualMenuVisibilityInput) (*struct{}, error) {
 		c.Config.Lock()
 		steamCfg := *c.Config.Steam
 		c.Config.Unlock()
 
 		closeCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 		defer cancel()
-		if err := steam.CloseVirtualMenuTabs(closeCtx, &steamCfg); err != nil {
-			slog.Debug("Failed to clear stale Steam virtual menus", "error", err)
+		if err := steam.SetVirtualMenuVisibility(closeCtx, &steamCfg, input.Body.Visible); err != nil {
+			slog.Debug("Failed to change Steam virtual-menu visibility", "visible", input.Body.Visible, "error", err)
 			return nil, err
 		}
-		slog.Debug("Cleared stale Steam virtual menus")
+		slog.Debug("Changed Steam virtual-menu visibility", "visible", input.Body.Visible)
 		return nil, nil
 	}
 }

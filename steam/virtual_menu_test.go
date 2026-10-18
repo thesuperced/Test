@@ -29,7 +29,7 @@ func TestIsVirtualMenuTab(t *testing.T) {
 	}
 }
 
-func TestCloseVirtualMenuTabs(t *testing.T) {
+func TestSetVirtualMenuTabsVisibility(t *testing.T) {
 	requests := make(chan closeTargetRequest, 1)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		conn, err := websocket.Accept(w, r, nil)
@@ -52,12 +52,13 @@ func TestCloseVirtualMenuTabs(t *testing.T) {
 		{Title: "SharedJSContext", WebSocketDebuggerURL: "ws://example.com/ignored"},
 		{Title: "virtualmenus_uid123", WebSocketDebuggerURL: debuggerURL},
 	}
-	if err := closeVirtualMenuTabs(context.Background(), tabs); err != nil {
+	if err := setVirtualMenuTabsVisibility(context.Background(), tabs, false); err != nil {
 		t.Fatal(err)
 	}
 	select {
 	case request := <-requests:
-		if request.ID != 1 || request.Method != "Page.close" {
+		if request.ID != 1 || request.Method != "Runtime.evaluate" ||
+			!strings.Contains(request.Params["expression"].(string), "visibility','hidden") {
 			t.Fatalf("unexpected request: %+v", request)
 		}
 	case <-time.After(time.Second):
@@ -65,8 +66,43 @@ func TestCloseVirtualMenuTabs(t *testing.T) {
 	}
 }
 
-func TestCloseCEFTargetRejectsRemoteHost(t *testing.T) {
-	err := closeCEFTarget(context.Background(), "ws://example.com/devtools/page/1")
+func TestRestoreVirtualMenuTabsVisibility(t *testing.T) {
+	requests := make(chan closeTargetRequest, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := websocket.Accept(w, r, nil)
+		if err != nil {
+			t.Errorf("accept websocket: %v", err)
+			return
+		}
+		defer conn.CloseNow() //nolint:errcheck
+		var request closeTargetRequest
+		if err := wsjson.Read(r.Context(), conn, &request); err != nil {
+			t.Errorf("read restore request: %v", err)
+			return
+		}
+		requests <- request
+	}))
+	defer server.Close()
+
+	debuggerURL := "ws" + strings.TrimPrefix(server.URL, "http")
+	if err := setVirtualMenuTabsVisibility(context.Background(), []TabInfo{{
+		Title: "virtualmenus_uid123", WebSocketDebuggerURL: debuggerURL,
+	}}, true); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case request := <-requests:
+		if request.Method != "Runtime.evaluate" ||
+			!strings.Contains(request.Params["expression"].(string), "removeProperty") {
+			t.Fatalf("unexpected request: %+v", request)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("virtual menu target was not restored")
+	}
+}
+
+func TestSetCEFTargetVisibilityRejectsRemoteHost(t *testing.T) {
+	err := setCEFTargetVisibility(context.Background(), "ws://example.com/devtools/page/1", false)
 	if err == nil || !strings.Contains(err.Error(), "non-loopback") {
 		t.Fatalf("got %v, want non-loopback error", err)
 	}
