@@ -40,6 +40,12 @@ type SISR struct {
 }
 
 func (s *SISR) Run(cfg config.Global) error {
+	releaseInstance, err := acquireSingleInstance()
+	if err != nil {
+		return err
+	}
+	defer releaseInstance()
+
 	ctx, stop := signal.NotifyContext(
 		context.Background(),
 		os.Interrupt, syscall.SIGTERM,
