@@ -85,6 +85,14 @@ jobs:
           VERSION: keyboard-recovery-test-${{ github.sha }}
         run: just build Release
 
+      - name: Build test-build uninstaller
+        shell: bash
+        env:
+          GOOS: windows
+          GOARCH: amd64
+          CGO_ENABLED: "0"
+        run: go build -trimpath -ldflags "-s -w" -o dist/SISR-TEST-UNINSTALL.exe ./tools/testuninstall
+
       - name: Include VIIPER
         shell: bash
         run: |
@@ -103,10 +111,14 @@ jobs:
           folder, fully exit stable SISR, then run SISR.exe from that folder.
           Never run two SISR instances simultaneously. Do not launch the
           SISR Marker entry from Steam. Exit this build to roll back.
+
+          To remove this portable test build, fully quit SISR and VIIPER, then
+          run SISR-TEST-UNINSTALL.exe and follow its prompt. It preserves your
+          stable installation and AppData configuration.
           EOF
           cd dist
-          sha256sum SISR.exe viiper.exe > SHA256SUMS.txt
-          7z a -tzip SISR-KEYBOARD-RECOVERY-TEST-windows-x64.zip SISR.exe viiper.exe '*.dll' TEST-BUILD-README.txt SHA256SUMS.txt
+          sha256sum SISR.exe viiper.exe SISR-TEST-UNINSTALL.exe > SHA256SUMS.txt
+          7z a -tzip SISR-KEYBOARD-RECOVERY-TEST-windows-x64.zip SISR.exe viiper.exe SISR-TEST-UNINSTALL.exe '*.dll' TEST-BUILD-README.txt SHA256SUMS.txt
 
       - name: Upload experimental test build
         uses: actions/upload-artifact@v7.0.1
@@ -120,13 +132,14 @@ jobs:
         uses: softprops/action-gh-release@v3.0.0
         with:
           tag_name: keyboard-recovery-test
-          name: SISR Keyboard Recovery Test Build
+          name: SISR Keyboard and Virtual Menu Recovery Test Build
           prerelease: true
           make_latest: false
           body: |
             Experimental Windows x64 build of SISR with native recovery after
-            the Steam on-screen keyboard closes. This is not an official SISR
-            release and has not been tested on the user's physical controller.
+            the Steam on-screen keyboard closes and cleanup of stale virtual
+            menus after action-set changes. Includes a portable test-build
+            uninstaller. This is not an official SISR release.
 
             Keep stable SISR installed. Extract this build to a separate folder,
             fully exit stable SISR, and run only the test copy. Do not launch the

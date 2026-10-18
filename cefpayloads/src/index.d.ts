@@ -70,7 +70,7 @@ interface SteamClient {
     GameNotes: Record<string, (...args: unknown[]) => unknown>;
     GameRecording: Record<string, (...args: unknown[]) => unknown>;
     GameSessions: Record<string, (...args: unknown[]) => unknown>;
-    Input: Record<string, (...args: unknown[]) => unknown>;
+    Input: SteamClientInput;
     InstallFolder: Record<string, (...args: unknown[]) => unknown>;
     Installs: Record<string, (...args: unknown[]) => unknown>;
     MachineStorage: {
@@ -173,6 +173,13 @@ interface SteamClientOverlay {
             overlay_opened_closed_bool: boolean,
             always_true: boolean
         ) => void) => Promise<unknown>;
+}
+
+interface SteamClientInput {
+    [key: string]: ((...args: never[]) => unknown) | undefined;
+    RegisterForTouchMenuMessages: (
+        callback: (message: unknown) => void
+    ) => { unregister?: () => void };
 }
 
 interface SteamClientSystemDisplay {

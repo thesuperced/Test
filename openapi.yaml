@@ -563,6 +563,22 @@ paths:
         - steam
         - cef
         - inject
+  /api/v1/steam/cef/clear-virtual-menus:
+    post:
+      description: Close stale Steam virtual-menu CEF targets after an action-set change
+      responses:
+        "204":
+          description: No Content
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      tags:
+        - steam
+        - cef
+        - callback
   /api/v1/steam/cef/open-configurator:
     post:
       requestBody:
