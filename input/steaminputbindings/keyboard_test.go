@@ -97,7 +97,7 @@ func TestWatchKeyboard(t *testing.T) {
 					wantCalls(0)
 					open.Store(false)
 					advance(time.Second)
-					wantCalls(1)
+					wantCalls(2)
 				case "cef failure":
 					observationFailed.Store(true)
 					advance(time.Second)
@@ -109,7 +109,7 @@ func TestWatchKeyboard(t *testing.T) {
 					advance(250 * time.Millisecond)
 					open.Store(false)
 					advance(time.Second)
-					wantCalls(1)
+					wantCalls(2)
 				case "disabled", "other app", "off on":
 					appID := uint32(0)
 					if scenario == "other app" {
@@ -136,7 +136,7 @@ func TestWatchKeyboard(t *testing.T) {
 					advance(5 * time.Second)
 					want := 3
 					if scenario == "retry succeeds" {
-						want = 2
+						want = 3
 					}
 					wantCalls(want)
 					advance(time.Minute)
@@ -154,15 +154,15 @@ func TestWatchKeyboard(t *testing.T) {
 				default:
 					advance(299 * time.Millisecond)
 					wantCalls(0)
-					advance(time.Millisecond)
-					wantCalls(1)
+					advance(101 * time.Millisecond)
+					wantCalls(2)
 					advance(time.Second)
-					wantCalls(1)
+					wantCalls(2)
 					open.Store(true)
 					advance(250 * time.Millisecond)
 					open.Store(false)
 					advance(time.Second)
-					wantCalls(2)
+					wantCalls(4)
 				}
 				cancel()
 				<-done
@@ -223,7 +223,7 @@ func TestReapplyOwnAppIDGuards(t *testing.T) {
 			}
 			applied, err := e.reapplyOwnAppID(ctx, 1)
 			want := mode == "enabled"
-			if err != nil || applied != want || (calls == 1) != want {
+			if err != nil || applied != want || (calls == 2) != want {
 				t.Fatalf("applied=%v calls=%d err=%v", applied, calls, err)
 			}
 		})
@@ -260,7 +260,7 @@ func TestWatchKeyboardCancelForce(t *testing.T) {
 		e := testEnforcer()
 		entered := make(chan struct{})
 		e.openURL = func(ctx context.Context, url string) error {
-			if url != "steam://forceinputappid/42" {
+			if url != "steam://forceinputappid/0" {
 				t.Errorf("unexpected URL %q", url)
 			}
 			close(entered)

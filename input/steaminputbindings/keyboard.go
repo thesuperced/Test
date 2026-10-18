@@ -10,6 +10,7 @@ import (
 const (
 	keyboardPollInterval  = 250 * time.Millisecond
 	keyboardRecoveryDelay = 300 * time.Millisecond
+	keyboardResetDelay    = 100 * time.Millisecond
 	keyboardMaxAttempts   = 3
 )
 
@@ -73,6 +74,26 @@ func (e *enforcer) keyboardRecoveryState() (uint64, bool) {
 }
 
 func (e *enforcer) reapplyOwnAppID(ctx context.Context, generation uint64) (bool, error) {
+	e.mtx.Lock()
+	if ctx.Err() != nil || e.noSteam || e.ownAppID == 0 || e.forcedAppID != e.ownAppID || e.generation != generation {
+		e.mtx.Unlock()
+		return false, nil
+	}
+	// Re-sending the same app ID can be ignored by Steam while a keyboard
+	// overlay still owns controller focus. Explicitly release the forced layout
+	// first, as SISR's successful shutdown cleanup does, then restore it.
+	if err := e.openURL(ctx, "steam://forceinputappid/0"); err != nil {
+		e.mtx.Unlock()
+		return false, err
+	}
+	e.mtx.Unlock()
+	timer := time.NewTimer(keyboardResetDelay)
+	select {
+	case <-ctx.Done():
+		timer.Stop()
+		return false, ctx.Err()
+	case <-timer.C:
+	}
 	e.mtx.Lock()
 	defer e.mtx.Unlock()
 	if ctx.Err() != nil || e.noSteam || e.ownAppID == 0 || e.forcedAppID != e.ownAppID || e.generation != generation {
