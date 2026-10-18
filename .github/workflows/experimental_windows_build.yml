@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
@@ -115,3 +115,20 @@ jobs:
           path: dist/SISR-KEYBOARD-RECOVERY-TEST-windows-x64.zip
           if-no-files-found: error
           retention-days: 14
+
+      - name: Publish experimental test build
+        uses: softprops/action-gh-release@v3.0.0
+        with:
+          tag_name: keyboard-recovery-test
+          name: SISR Keyboard Recovery Test Build
+          prerelease: true
+          make_latest: false
+          body: |
+            Experimental Windows x64 build of SISR with native recovery after
+            the Steam on-screen keyboard closes. This is not an official SISR
+            release and has not been tested on the user's physical controller.
+
+            Keep stable SISR installed. Extract this build to a separate folder,
+            fully exit stable SISR, and run only the test copy. Do not launch the
+            SISR Marker Steam entry. Exit the test copy to roll back.
+          files: dist/SISR-KEYBOARD-RECOVERY-TEST-windows-x64.zip
