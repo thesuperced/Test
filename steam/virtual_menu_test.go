@@ -30,7 +30,7 @@ func TestIsVirtualMenuTab(t *testing.T) {
 }
 
 func TestSetVirtualMenuTabsVisibility(t *testing.T) {
-	requests := make(chan closeTargetRequest, 1)
+	requests := make(chan cdpRequest, 1)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		conn, err := websocket.Accept(w, r, nil)
 		if err != nil {
@@ -38,7 +38,7 @@ func TestSetVirtualMenuTabsVisibility(t *testing.T) {
 			return
 		}
 		defer conn.CloseNow() //nolint:errcheck
-		var request closeTargetRequest
+		var request cdpRequest
 		if err := wsjson.Read(r.Context(), conn, &request); err != nil {
 			t.Errorf("read close request: %v", err)
 			return
@@ -57,8 +57,7 @@ func TestSetVirtualMenuTabsVisibility(t *testing.T) {
 	}
 	select {
 	case request := <-requests:
-		if request.ID != 1 || request.Method != "Runtime.evaluate" ||
-			!strings.Contains(request.Params["expression"].(string), "visibility','hidden") {
+		if request.ID != 1 || request.Method != "Page.reload" || request.Params["ignoreCache"] != true {
 			t.Fatalf("unexpected request: %+v", request)
 		}
 	case <-time.After(time.Second):
@@ -67,7 +66,7 @@ func TestSetVirtualMenuTabsVisibility(t *testing.T) {
 }
 
 func TestRestoreVirtualMenuTabsVisibility(t *testing.T) {
-	requests := make(chan closeTargetRequest, 1)
+	requests := make(chan cdpRequest, 1)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		conn, err := websocket.Accept(w, r, nil)
 		if err != nil {
@@ -75,7 +74,7 @@ func TestRestoreVirtualMenuTabsVisibility(t *testing.T) {
 			return
 		}
 		defer conn.CloseNow() //nolint:errcheck
-		var request closeTargetRequest
+		var request cdpRequest
 		if err := wsjson.Read(r.Context(), conn, &request); err != nil {
 			t.Errorf("read restore request: %v", err)
 			return

@@ -15,7 +15,7 @@ import (
 
 const virtualMenuTargetPrefix = "virtualmenus_uid"
 
-type closeTargetRequest struct {
+type cdpRequest struct {
 	ID     int                    `json:"id"`
 	Method string                 `json:"method"`
 	Params map[string]interface{} `json:"params,omitempty"`
@@ -67,13 +67,13 @@ func setCEFTargetVisibility(ctx context.Context, debuggerURL string, visible boo
 		return err
 	}
 	defer conn.CloseNow() //nolint:errcheck
-	expression := "document.documentElement.style.setProperty('visibility','hidden','important')"
+	request := cdpRequest{ID: 1, Method: "Page.reload", Params: map[string]interface{}{"ignoreCache": true}}
 	if visible {
-		expression = "document.documentElement.style.removeProperty('visibility')"
+		request = cdpRequest{
+			ID:     1,
+			Method: "Runtime.evaluate",
+			Params: map[string]interface{}{"expression": "document.documentElement.style.removeProperty('visibility')"},
+		}
 	}
-	return wsjson.Write(ctx, conn, closeTargetRequest{
-		ID:     1,
-		Method: "Runtime.evaluate",
-		Params: map[string]interface{}{"expression": expression},
-	})
+	return wsjson.Write(ctx, conn, request)
 }

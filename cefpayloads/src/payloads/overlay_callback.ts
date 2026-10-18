@@ -14,7 +14,7 @@ __INJECT_RETURN = (async () => {
 
     let virtualMenuGeneration = 0;
     let virtualMenuTimer: ReturnType<typeof setTimeout> | undefined;
-    const readCreatedField = (message: unknown): boolean | undefined => {
+    const readVirtualMenuEvent = (message: unknown): { created: boolean; key: string } | undefined => {
         let bytes: Uint8Array;
         if (message instanceof Uint8Array) {
             bytes = message;
@@ -25,6 +25,7 @@ __INJECT_RETURN = (async () => {
         } else {
             return undefined;
         }
+        const fields = new Map<number, number>();
         for (let offset = 0; offset < bytes.length;) {
             let tag = 0;
             let shift = 0;
@@ -47,7 +48,7 @@ __INJECT_RETURN = (async () => {
                     shift += 7;
                     if (shift > 28) return undefined;
                 }
-                if (field === 1) return value !== 0;
+                fields.set(field, value);
             } else if (wire === 1) {
                 offset += 8;
             } else if (wire === 2) {
@@ -67,20 +68,29 @@ __INJECT_RETURN = (async () => {
                 return undefined;
             }
         }
-        return undefined;
+        const created = fields.get(1);
+        if (created === undefined) return undefined;
+        return {
+            created: created !== 0,
+            key: `${fields.get(2) ?? 0}:${fields.get(3) ?? 0}`
+        };
     };
 
     const input = window.SteamClient?.Input ?? (opener as SteamWindow)?.SteamClient?.Input;
+    const activeVirtualMenus = new Set<string>();
     const virtualMenuRegistration = input?.RegisterForTouchMenuMessages?.((message: unknown) => {
-        const created = readCreatedField(message);
-        if (created === undefined) return;
+        const event = readVirtualMenuEvent(message);
+        if (!event) return;
         const generation = ++virtualMenuGeneration;
         if (virtualMenuTimer) clearTimeout(virtualMenuTimer);
-        if (created) {
+        if (event.created) {
+            activeVirtualMenus.add(event.key);
             void client.POST('/api/v1/steam/cef/virtual-menu-visibility', {
                 body: { visible: true }
             }).catch((e) => console.error('Error restoring virtual menu visibility', e));
         } else {
+            activeVirtualMenus.delete(event.key);
+            if (activeVirtualMenus.size > 0) return;
             virtualMenuTimer = setTimeout(() => {
                 if (generation !== virtualMenuGeneration) return;
                 void client.POST('/api/v1/steam/cef/virtual-menu-visibility', {

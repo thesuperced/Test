@@ -197,7 +197,15 @@ func (s *SISR) Run(cfg config.Global) error {
 			// HACK: attempt to workaround possible bug in Steam where inputs might get stuck
 			time.Sleep(2 * time.Second)
 
-			err = bindingEnforcer.ForceOwnAppID()
+			err = bindingEnforcer.ForceInputAppID(0)
+			if err == nil {
+				select {
+				case <-ctx.Done():
+					return
+				case <-time.After(100 * time.Millisecond):
+				}
+				err = bindingEnforcer.ForceOwnAppID()
+			}
 			if err != nil {
 				slog.Error("Failed to force SteamInput layout", "error", err)
 			}
