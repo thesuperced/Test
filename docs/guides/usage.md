@@ -91,3 +91,21 @@ steam_path = "C:/Program Files (x86)/Steam"
 ```
 
 For more information and full list of all options see: [Configuration](../../config/config.md)
+
+### Steam keyboard recovery
+
+When SISR is enforcing its own Steam Input layout, it watches Steam's CEF
+debugging targets for the on-screen keyboard. After the keyboard closes,
+SISR waits 300 ms, checks that it remains closed, and reapplies the layout
+once. The watcher uses the configured/detected CEF debugging port and stops
+when SISR exits. It does not read keyboard contents.
+
+Recovery requires reachable Steam CEF remote debugging and the exact target
+title `Steam Input On-screen Keyboard`. Other titles/localizations are not
+currently detected. CEF errors or an empty target list cancel pending
+recovery; a new keyboard session is required after reconnection.
+
+Recovery respects successful enforcement changes, including Allow Desktop
+Config and the force-config API. It does not add Steam game detection:
+continue to quit SISR before playing games that already support Steam Input,
+as described above. Do not launch SISR Marker to recover keyboard input.

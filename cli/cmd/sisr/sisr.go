@@ -161,6 +161,20 @@ func (s *SISR) Run(cfg config.Global) error {
 		},
 	}
 
+	if !s.NoSteam {
+		keyboardCtx, cancelKeyboard := context.WithCancel(ctx)
+		keyboardDone := make(chan struct{})
+		observer := steam.NewKeyboardObserver(s.Steam)
+		go func() {
+			defer close(keyboardDone)
+			bindingEnforcer.WatchKeyboard(keyboardCtx, observer.IsOpen)
+		}()
+		defer func() {
+			cancelKeyboard()
+			<-keyboardDone
+		}()
+	}
+
 	registerEventHandlers(eventRouter, cmdCtx, window, wv)
 
 	_, apiAddr := s.runAPIServer(cmdCtx)

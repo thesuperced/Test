@@ -1,6 +1,7 @@
 package helper
 
 import (
+	"context"
 	"log/slog"
 	"os/exec"
 	"runtime"
@@ -8,6 +9,12 @@ import (
 )
 
 func OpenURL(url string) error {
+	return OpenURLContext(context.Background(), url)
+}
+
+// OpenURLContext opens a URL using the platform handler, stopping the handler
+// process if the caller cancels or times out.
+func OpenURLContext(ctx context.Context, url string) error {
 	var cmd string
 	var args []string
 
@@ -21,7 +28,7 @@ func OpenURL(url string) error {
 	}
 
 	slog.Debug("Opening URL", "url", url)
-	e := exec.Command(cmd, args...)
+	e := exec.CommandContext(ctx, cmd, args...)
 	err := e.Start()
 	if err != nil {
 		return err

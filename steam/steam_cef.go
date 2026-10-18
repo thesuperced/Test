@@ -47,6 +47,10 @@ func GetCEFTabs(ctx context.Context, cfg *config.Steam) ([]TabInfo, error) {
 		}
 	}
 
+	return getCEFTabsAtPort(ctx, remoteDebugPort)
+}
+
+func getCEFTabsAtPort(ctx context.Context, remoteDebugPort uint16) ([]TabInfo, error) {
 	url := fmt.Sprintf("http://localhost:%d/json", remoteDebugPort)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {

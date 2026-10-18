@@ -1,6 +1,7 @@
 package steaminputbindings
 
 import (
+	"context"
 	"log/slog"
 	"os"
 	"strconv"
@@ -13,12 +14,15 @@ type Enforcer interface {
 	GetForcedInputAppID() uint32
 	ForceInputAppID(appID uint32) error
 	ForceOwnAppID() error
+	WatchKeyboard(context.Context, func(context.Context) (bool, error))
 }
 
 type enforcer struct {
 	forcedAppID uint32
 	ownAppID    uint32
 	noSteam     bool
+	generation  uint64
+	openURL     func(context.Context, string) error
 
 	mtx sync.Mutex
 }
@@ -40,6 +44,7 @@ func NewEnforcer(noSteam bool) Enforcer {
 	return &enforcer{
 		ownAppID: ownAppID,
 		noSteam:  noSteam,
+		openURL:  helper.OpenURLContext,
 	}
 }
 
@@ -63,11 +68,12 @@ func (e *enforcer) ForceInputAppID(appID uint32) error {
 		slog.Info("Forcing SteamInput layout for appID", "appID", appID)
 	}
 
-	err := helper.OpenURL("steam://forceinputappid/" + strconv.FormatUint(uint64(appID), 10))
+	err := e.openURL(context.Background(), "steam://forceinputappid/"+strconv.FormatUint(uint64(appID), 10))
 	if err != nil {
 		return err
 	}
 
+	e.generation++
 	e.forcedAppID = appID
 	return nil
 }
@@ -86,11 +92,12 @@ func (e *enforcer) ForceOwnAppID() error {
 
 	slog.Info("Forcing SteamInput layout for own appID", "appID", e.ownAppID)
 
-	err := helper.OpenURL("steam://forceinputappid/" + strconv.FormatUint(uint64(e.ownAppID), 10))
+	err := e.openURL(context.Background(), "steam://forceinputappid/"+strconv.FormatUint(uint64(e.ownAppID), 10))
 	if err != nil {
 		return err
 	}
 
+	e.generation++
 	e.forcedAppID = e.ownAppID
 	return nil
 }
