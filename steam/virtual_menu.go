@@ -67,7 +67,11 @@ func setCEFTargetVisibility(ctx context.Context, debuggerURL string, visible boo
 		return err
 	}
 	defer conn.CloseNow() //nolint:errcheck
-	request := cdpRequest{ID: 1, Method: "Page.reload", Params: map[string]interface{}{"ignoreCache": true}}
+	request := cdpRequest{
+		ID:     1,
+		Method: "Runtime.evaluate",
+		Params: map[string]interface{}{"expression": "document.documentElement.style.setProperty('visibility','hidden','important')"},
+	}
 	if visible {
 		request = cdpRequest{
 			ID:     1,

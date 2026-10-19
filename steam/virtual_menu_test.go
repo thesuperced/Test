@@ -57,7 +57,8 @@ func TestSetVirtualMenuTabsVisibility(t *testing.T) {
 	}
 	select {
 	case request := <-requests:
-		if request.ID != 1 || request.Method != "Page.reload" || request.Params["ignoreCache"] != true {
+		if request.ID != 1 || request.Method != "Runtime.evaluate" ||
+			!strings.Contains(request.Params["expression"].(string), "visibility','hidden") {
 			t.Fatalf("unexpected request: %+v", request)
 		}
 	case <-time.After(time.Second):

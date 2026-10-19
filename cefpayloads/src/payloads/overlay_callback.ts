@@ -14,7 +14,12 @@ __INJECT_RETURN = (async () => {
 
     let virtualMenuGeneration = 0;
     let virtualMenuTimer: ReturnType<typeof setTimeout> | undefined;
-    const readVirtualMenuEvent = (message: unknown): { created: boolean; key: string } | undefined => {
+    const readVirtualMenuEvent = (message: unknown): {
+        created: boolean;
+        controllerIndex: number;
+        menuIndex: number;
+        key: string;
+    } | undefined => {
         let bytes: Uint8Array;
         if (message instanceof Uint8Array) {
             bytes = message;
@@ -70,9 +75,13 @@ __INJECT_RETURN = (async () => {
         }
         const created = fields.get(1);
         if (created === undefined) return undefined;
+        const controllerIndex = fields.get(2) ?? 0;
+        const menuIndex = fields.get(3) ?? 0;
         return {
             created: created !== 0,
-            key: `${fields.get(2) ?? 0}:${fields.get(3) ?? 0}`
+            controllerIndex,
+            menuIndex,
+            key: `${controllerIndex}:${menuIndex}`
         };
     };
 
@@ -89,6 +98,10 @@ __INJECT_RETURN = (async () => {
                 body: { visible: true }
             }).catch((e) => console.error('Error restoring virtual menu visibility', e));
         } else {
+            // Steam removes the menu on an action-set change without clearing
+            // the selected radial segment. That stale selection consumes the
+            // later release and leaves the menu visible but produces no output.
+            input?.SetVirtualMenuKeySelected?.(event.controllerIndex, event.menuIndex, -1);
             activeVirtualMenus.delete(event.key);
             if (activeVirtualMenus.size > 0) return;
             virtualMenuTimer = setTimeout(() => {

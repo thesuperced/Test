@@ -177,6 +177,7 @@ interface SteamClientOverlay {
 
 interface SteamClientInput {
     [key: string]: ((...args: never[]) => unknown) | undefined;
+    SetVirtualMenuKeySelected: (controllerIndex: number, menuIndex: number, keyIndex: number) => void;
     RegisterForTouchMenuMessages: (
         callback: (message: unknown) => void
     ) => { unregister?: () => void };
