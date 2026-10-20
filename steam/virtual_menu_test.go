@@ -44,6 +44,7 @@ func TestSetVirtualMenuTabsVisibility(t *testing.T) {
 			return
 		}
 		requests <- request
+		_ = wsjson.Write(r.Context(), conn, map[string]interface{}{"id": request.ID, "result": map[string]interface{}{}})
 	}))
 	defer server.Close()
 
@@ -81,6 +82,7 @@ func TestRestoreVirtualMenuTabsVisibility(t *testing.T) {
 			return
 		}
 		requests <- request
+		_ = wsjson.Write(r.Context(), conn, map[string]interface{}{"id": request.ID, "result": map[string]interface{}{}})
 	}))
 	defer server.Close()
 

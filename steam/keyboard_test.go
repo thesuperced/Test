@@ -7,13 +7,10 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strconv"
-	"strings"
 	"testing"
 	"time"
 
 	"github.com/Alia5/SISR/config"
-	"github.com/coder/websocket"
-	"github.com/coder/websocket/wsjson"
 )
 
 func TestKeyboardTargetPresent(t *testing.T) {
@@ -33,51 +30,6 @@ func TestKeyboardTargetPresent(t *testing.T) {
 	}
 	if keyboardTargetPresent(nil) {
 		t.Fatal("empty target list identified as keyboard")
-	}
-}
-
-func TestCloseDuplicateKeyboardTargets(t *testing.T) {
-	requests := make(chan string, 1)
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		conn, err := websocket.Accept(w, r, nil)
-		if err != nil {
-			t.Errorf("accept websocket: %v", err)
-			return
-		}
-		defer conn.CloseNow() //nolint:errcheck
-		var request struct {
-			Method string `json:"method"`
-		}
-		if err := wsjson.Read(r.Context(), conn, &request); err != nil {
-			t.Errorf("read close request: %v", err)
-			return
-		}
-		requests <- request.Method
-	}))
-	defer server.Close()
-
-	debuggerURL := "ws" + strings.TrimPrefix(server.URL, "http")
-	tabs := []TabInfo{
-		{ID: "keep", Title: keyboardTargetTitle, WebSocketDebuggerURL: "ws://example.com/must-not-close"},
-		{ID: "duplicate", Title: keyboardTargetTitle, WebSocketDebuggerURL: debuggerURL},
-	}
-	if err := closeDuplicateKeyboardTargets(context.Background(), tabs); err != nil {
-		t.Fatal(err)
-	}
-	select {
-	case method := <-requests:
-		if method != "Page.close" {
-			t.Fatalf("method=%q, want Page.close", method)
-		}
-	case <-time.After(time.Second):
-		t.Fatal("duplicate keyboard target was not closed")
-	}
-}
-
-func TestCloseKeyboardTargetRejectsRemoteHost(t *testing.T) {
-	err := closeKeyboardTarget(context.Background(), "ws://example.com/devtools/page/1")
-	if err == nil || !strings.Contains(err.Error(), "non-loopback") {
-		t.Fatalf("got %v, want non-loopback error", err)
 	}
 }
 

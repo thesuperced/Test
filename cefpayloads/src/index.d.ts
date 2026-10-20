@@ -181,6 +181,9 @@ interface SteamClientInput {
     RegisterForTouchMenuMessages: (
         callback: (message: unknown) => void
     ) => { unregister?: () => void };
+    RegisterForTouchMenuInputMessages: (
+        callback: (controller: number, menu: number, x: number, y: number, active: boolean, selected: number) => void
+    ) => { unregister?: () => void };
 }
 
 interface SteamClientSystemDisplay {

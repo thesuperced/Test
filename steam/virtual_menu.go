@@ -2,11 +2,13 @@ package steam
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/Alia5/SISR/config"
 	"github.com/coder/websocket"
@@ -50,6 +52,34 @@ func isVirtualMenuTab(tab TabInfo) bool {
 }
 
 func setCEFTargetVisibility(ctx context.Context, debuggerURL string, visible bool) error {
+	expression := "clearTimeout(window.__sisrVirtualMenuTimer); document.documentElement.style.setProperty('visibility','hidden','important')"
+	if visible {
+		// This lease expires even if SISR stops sending updates.
+		expression = "clearTimeout(window.__sisrVirtualMenuTimer); document.documentElement.style.removeProperty('visibility'); window.__sisrVirtualMenuTimer=setTimeout(()=>document.documentElement.style.setProperty('visibility','hidden','important'),5000)"
+	}
+	return evaluateMenuTarget(ctx, debuggerURL, expression)
+}
+
+// RestoreVirtualMenus relinquishes SISR's visibility override on normal exit.
+func RestoreVirtualMenus(ctx context.Context, cfg *config.Steam) error {
+	tabs, err := GetCEFTabs(ctx, cfg)
+	if err != nil {
+		return err
+	}
+	var errs []error
+	for _, tab := range tabs {
+		if isVirtualMenuTab(tab) {
+			if err := evaluateMenuTarget(ctx, tab.WebSocketDebuggerURL, "clearTimeout(window.__sisrVirtualMenuTimer); document.documentElement.style.removeProperty('visibility')"); err != nil {
+				errs = append(errs, err)
+			}
+		}
+	}
+	return errors.Join(errs...)
+}
+
+func evaluateMenuTarget(ctx context.Context, debuggerURL, expression string) error {
+	ctx, cancel := context.WithTimeout(ctx, time.Second)
+	defer cancel()
 	u, err := url.Parse(debuggerURL)
 	if err != nil {
 		return err
@@ -70,14 +100,28 @@ func setCEFTargetVisibility(ctx context.Context, debuggerURL string, visible boo
 	request := cdpRequest{
 		ID:     1,
 		Method: "Runtime.evaluate",
-		Params: map[string]interface{}{"expression": "document.documentElement.style.setProperty('visibility','hidden','important')"},
+		Params: map[string]interface{}{"expression": expression},
 	}
-	if visible {
-		request = cdpRequest{
-			ID:     1,
-			Method: "Runtime.evaluate",
-			Params: map[string]interface{}{"expression": "document.documentElement.style.removeProperty('visibility')"},
+	if err := wsjson.Write(ctx, conn, request); err != nil {
+		return err
+	}
+	for {
+		var reply struct {
+			ID     int             `json:"id"`
+			Error  json.RawMessage `json:"error"`
+			Result struct {
+				ExceptionDetails json.RawMessage `json:"exceptionDetails"`
+			} `json:"result"`
 		}
+		if err := wsjson.Read(ctx, conn, &reply); err != nil {
+			return err
+		}
+		if reply.ID != request.ID {
+			continue
+		}
+		if len(reply.Error) > 0 || len(reply.Result.ExceptionDetails) > 0 {
+			return errors.New("Steam CEF rejected virtual menu visibility update")
+		}
+		return nil
 	}
-	return wsjson.Write(ctx, conn, request)
 }

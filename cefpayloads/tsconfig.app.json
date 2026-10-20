@@ -22,6 +22,7 @@
 		"moduleResolution": "bundler",
 		"module": "esnext",
 		"noEmit": true,
+		"allowImportingTsExtensions": true,
 		"target": "esnext",
 		"types": [
 			"node",

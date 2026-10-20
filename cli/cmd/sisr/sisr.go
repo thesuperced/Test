@@ -194,19 +194,14 @@ func (s *SISR) Run(cfg config.Global) error {
 
 	if !s.AllowSteamDesktopLayout {
 		go func() {
-			// HACK: attempt to workaround possible bug in Steam where inputs might get stuck
-			time.Sleep(2 * time.Second)
-
-			err = bindingEnforcer.ForceInputAppID(0)
-			if err == nil {
-				select {
-				case <-ctx.Done():
-					return
-				case <-time.After(100 * time.Millisecond):
-				}
-				err = bindingEnforcer.ForceOwnAppID()
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(2 * time.Second):
 			}
-			if err != nil {
+			// Do not briefly enable the desktop layout while the user may
+			// already be opening a keyboard with the controller.
+			if err := bindingEnforcer.ForceOwnAppID(); err != nil {
 				slog.Error("Failed to force SteamInput layout", "error", err)
 			}
 		}()
@@ -310,6 +305,11 @@ func (s *SISR) cleanup(c *config.Steam) {
 	if err != nil {
 		slog.Error("Failed to cleanup CEF payloads", "error", err)
 	}
+	restoreCtx, cancelRestore := context.WithTimeout(context.Background(), 3*time.Second)
+	if err := steam.RestoreVirtualMenus(restoreCtx, c); err != nil {
+		slog.Warn("Failed to restore Steam virtual menu visibility", "error", err)
+	}
+	cancelRestore()
 	err = helper.OpenURL("steam://forceinputappid/0")
 	if err != nil {
 		slog.Error("Failed to reset steam controller config", "error", err)

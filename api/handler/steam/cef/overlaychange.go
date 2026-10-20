@@ -31,8 +31,7 @@ type OverlayChanged struct {
 
 func overlayStateChanged(c *cmd.SISRContext) func(ctx context.Context, req *OverlayChangedRequest) (*struct{}, error) {
 
-	previousVisibility := false
-	previousHitTest := false
+	var state overlaySnapshot
 
 	return func(ctx context.Context, req *OverlayChangedRequest) (*struct{}, error) {
 		c.Config.Lock()
@@ -43,14 +42,15 @@ func overlayStateChanged(c *cmd.SISRContext) func(ctx context.Context, req *Over
 			ctx,
 			c.WindowDispatcher,
 			func(w *sdl.Window, wv webview.WebView) error {
-				if req.Body.Open {
-					previousVisibility = wv.Visible()
-					previousHitTest = extras.GetWindowHitTest(w)
+				// Notifications can be duplicated (including after reinjection).
+				// Preserve the original state until the matching close edge.
+				if !state.transition(req.Body.Open, wv.Visible(), extras.GetWindowHitTest(w)) {
+					return nil
 				}
 
 				slog.Debug("Overlay state changed",
-					"previousWebViewVisibility", previousVisibility,
-					"previousCursorHitTest", previousHitTest,
+					"previousWebViewVisibility", state.visibility,
+					"previousCursorHitTest", state.hitTest,
 					"newOverlayOpenState", req.Body.Open,
 				)
 
@@ -61,10 +61,10 @@ func overlayStateChanged(c *cmd.SISRContext) func(ctx context.Context, req *Over
 						slog.Error("Failed setting window cursor hittest", "error", err)
 					}
 				} else {
-					if previousVisibility {
+					if state.visibility {
 						wv.SetVisible(true)
 					}
-					targetHitTest := previousHitTest
+					targetHitTest := state.hitTest
 					if kbmEnabled {
 						targetHitTest = true
 					}

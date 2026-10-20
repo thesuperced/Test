@@ -41,6 +41,7 @@ jobs:
         working-directory: cefpayloads
         run: |
           npm ci
+          node --test src/lib/virtual-menu.test.ts
           npm run build
 
       - name: Build UI
@@ -74,7 +75,9 @@ jobs:
 
       - name: Run focused recovery tests
         shell: bash
-        run: go test -race -count=1 ./input/steaminputbindings ./steam
+        run: |
+          go test -race -count=1 ./input/steaminputbindings ./steam
+          go test -race -count=1 api/handler/steam/cef/overlay_state.go api/handler/steam/cef/overlay_state_test.go
 
       - name: Build patched SISR
         shell: bash
@@ -116,6 +119,8 @@ jobs:
           run SISR-TEST-UNINSTALL.exe and follow its prompt. It preserves your
           stable installation and AppData configuration.
           EOF
+          cat docs/keyboard-menu-recovery-test.md >> dist/TEST-BUILD-README.txt
+          echo "Source commit: ${{ github.sha }}" >> dist/TEST-BUILD-README.txt
           cd dist
           sha256sum SISR.exe viiper.exe SISR-TEST-UNINSTALL.exe > SHA256SUMS.txt
           7z a -tzip SISR-KEYBOARD-RECOVERY-TEST-windows-x64.zip SISR.exe viiper.exe SISR-TEST-UNINSTALL.exe '*.dll' TEST-BUILD-README.txt SHA256SUMS.txt
@@ -136,10 +141,13 @@ jobs:
           prerelease: true
           make_latest: false
           body: |
-            Experimental Windows x64 build of SISR with native recovery after
-            the Steam on-screen keyboard closes and cleanup of stale virtual
-            menus after action-set changes. Includes a portable test-build
-            uninstaller. This is not an official SISR release.
+            Experimental Windows x64 build: `${{ github.sha }}`.
+            Fixes duplicate overlay-state handling, removes the startup desktop-layout
+            reset, and replaces menu cleanup with touch-state tracking, correct
+            protobuf decoding and a five-second inactivity failsafe.
+            Includes a portable test-build uninstaller and hardware test instructions.
+            First-use duplicate keyboards and controller output still require
+            verification on the affected hardware. This is not an official SISR release.
 
             Keep stable SISR installed. Extract this build to a separate folder,
             fully exit stable SISR, and run only the test copy. Do not launch the
