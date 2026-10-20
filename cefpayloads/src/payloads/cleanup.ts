@@ -6,3 +6,5 @@ Object.entries(window.__sisrCleanup || {}).forEach(([key, cleanupFn]) => {
     }
 });
 window.__sisrCleanup = {};
+Reflect.deleteProperty(window, '__sisrNativeKeyboardOpen');
+Reflect.deleteProperty(window, '__sisrKeyboardGameID');

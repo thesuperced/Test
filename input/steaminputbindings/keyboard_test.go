@@ -64,6 +64,7 @@ func TestWatchKeyboard(t *testing.T) {
 					e.ownAppID = 0
 				}
 				ctx, cancel := context.WithCancel(context.Background())
+				defer cancel()
 				done := make(chan struct{})
 				go func() {
 					defer close(done)
@@ -87,29 +88,33 @@ func TestWatchKeyboard(t *testing.T) {
 				wantCalls(0) // never recover merely because initially closed
 				open.Store(true)
 				advance(time.Second)
-				wantCalls(0) // typing remains uninterrupted
+				if scenario == "no steam" || scenario == "missing appid" {
+					wantCalls(0)
+				} else {
+					wantCalls(1) // yield own mapping to the native keyboard
+				}
 				open.Store(false)
 				advance(250 * time.Millisecond) // first observed close
 				switch scenario {
 				case "reopen":
 					open.Store(true)
 					advance(time.Second)
-					wantCalls(0)
+					wantCalls(1)
 					open.Store(false)
 					advance(time.Second)
 					wantCalls(2)
 				case "cef failure":
 					observationFailed.Store(true)
 					advance(time.Second)
-					wantCalls(0)
+					wantCalls(1)
 					observationFailed.Store(false)
 					advance(time.Second)
-					wantCalls(0) // reconnect closed does not resurrect stale recovery
+					wantCalls(2) // confirmed close restores the suspended mapping
 					open.Store(true)
 					advance(250 * time.Millisecond)
 					open.Store(false)
 					advance(time.Second)
-					wantCalls(2)
+					wantCalls(4)
 				case "disabled", "other app", "off on":
 					appID := uint32(0)
 					if scenario == "other app" {
@@ -129,12 +134,12 @@ func TestWatchKeyboard(t *testing.T) {
 				case "retry exhausted", "retry succeeds":
 					forceFailed.Store(true)
 					advance(300 * time.Millisecond)
-					wantCalls(1)
+					wantCalls(2)
 					if scenario == "retry succeeds" {
 						forceFailed.Store(false)
 					}
 					advance(5 * time.Second)
-					want := 3
+					want := 4
 					if scenario == "retry succeeds" {
 						want = 3
 					}
@@ -144,7 +149,7 @@ func TestWatchKeyboard(t *testing.T) {
 				case "cancel pending":
 					cancel()
 					advance(time.Second)
-					wantCalls(0)
+					wantCalls(1)
 				case "no steam", "missing appid":
 					advance(time.Second)
 					wantCalls(0)
@@ -153,7 +158,7 @@ func TestWatchKeyboard(t *testing.T) {
 					}
 				default:
 					advance(299 * time.Millisecond)
-					wantCalls(0)
+					wantCalls(1)
 					advance(101 * time.Millisecond)
 					wantCalls(2)
 					advance(time.Second)

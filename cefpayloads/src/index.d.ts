@@ -162,6 +162,7 @@ interface SteamClientBrowser {
 }
 
 interface SteamClientOverlay {
+    SetOverlayState?: (gameID: string, state: number) => void;
     DestroyGamePadUIDesktopConfiguratorWindow: () => void;
     RegisterOverlayBrowserInfoChanged: (callback: (info: unknown) => void) => void;
     GetOverlayBrowserInfo: () => unknown;

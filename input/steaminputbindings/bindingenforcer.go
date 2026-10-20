@@ -19,11 +19,12 @@ type Enforcer interface {
 }
 
 type enforcer struct {
-	forcedAppID uint32
-	ownAppID    uint32
-	noSteam     bool
-	generation  uint64
-	openURL     func(context.Context, string) error
+	forcedAppID    uint32
+	ownAppID       uint32
+	noSteam        bool
+	generation     uint64
+	keyboardPaused bool
+	openURL        func(context.Context, string) error
 
 	mtx sync.Mutex
 }
@@ -76,6 +77,7 @@ func (e *enforcer) ForceInputAppID(appID uint32) error {
 	}
 
 	e.generation++
+	e.keyboardPaused = false
 	e.forcedAppID = appID
 	return nil
 }
@@ -101,6 +103,7 @@ func (e *enforcer) ForceOwnAppID() error {
 	}
 
 	e.generation++
+	e.keyboardPaused = false
 	e.forcedAppID = e.ownAppID
 	return nil
 }

@@ -34,6 +34,7 @@ func overlayStateChanged(c *cmd.SISRContext) func(ctx context.Context, req *Over
 
 	previousVisibility := false
 	previousHitTest := false
+	overlayOpen := false
 
 	return func(ctx context.Context, req *OverlayChangedRequest) (*struct{}, error) {
 		c.Config.Lock()
@@ -44,6 +45,10 @@ func overlayStateChanged(c *cmd.SISRContext) func(ctx context.Context, req *Over
 			ctx,
 			c.WindowDispatcher,
 			func(w *sdl.Window, wv webview.WebView) error {
+				if overlayOpen == req.Body.Open {
+					return nil
+				}
+				overlayOpen = req.Body.Open
 				logging.Diagnostic("overlay_window_before", map[string]any{
 					"open": req.Body.Open, "webview_visible": wv.Visible(),
 					"mouse_hit_test": extras.GetWindowHitTest(w), "kbm": kbmEnabled,
@@ -61,7 +66,9 @@ func overlayStateChanged(c *cmd.SISRContext) func(ctx context.Context, req *Over
 
 				if req.Body.Open {
 					wv.SetVisible(false)
-					err := extras.SetCursorHitTest(w, true)
+					// A hidden desktop host must not intercept the taskbar or
+					// the standalone Steam keyboard. KBM emulation opts in.
+					err := extras.SetCursorHitTest(w, kbmEnabled)
 					if err != nil {
 						slog.Error("Failed setting window cursor hittest", "error", err)
 					}

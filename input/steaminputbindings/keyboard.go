@@ -16,9 +16,9 @@ const (
 	keyboardMaxAttempts   = 3
 )
 
-// WatchKeyboard reapplies the currently selected own layout after the Steam
-// keyboard closes. A failed observation invalidates the cycle: an unavailable
-// or restarting CEF endpoint is not evidence that the keyboard closed.
+// WatchKeyboard suspends the own forced layout for the native keyboard and
+// restores it after a confirmed close. Observation failure does not mean close;
+// explicit user layout changes invalidate ownership through the generation.
 func (e *enforcer) WatchKeyboard(ctx context.Context, isOpen func(context.Context) (bool, error)) {
 	var state keyboardRecovery
 	lastOpen := false
@@ -32,7 +32,9 @@ func (e *enforcer) WatchKeyboard(ctx context.Context, isOpen func(context.Contex
 			open, err := isOpen(ctx)
 			now := time.Now()
 			if err != nil {
-				state = keyboardRecovery{}
+				// Preserve an observed open session across a transient CEF
+				// outage, but never infer a close from the outage itself.
+				state.due = time.Time{}
 				if !cefUnavailable && ctx.Err() == nil {
 					slog.Debug("Keyboard recovery: CEF observation unavailable")
 				}
@@ -43,6 +45,14 @@ func (e *enforcer) WatchKeyboard(ctx context.Context, isOpen func(context.Contex
 					lastOpen = open
 				}
 				cefUnavailable = false
+				if open {
+					pauseCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+					err := e.pauseForKeyboard(pauseCtx, generation)
+					cancel()
+					if err != nil {
+						slog.Debug("Keyboard layout suspension failed", "error", err)
+					}
+				}
 				if state.observe(now, open, generation) {
 					forceCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
 					applied, err := e.reapplyOwnAppID(forceCtx, generation)
@@ -87,6 +97,14 @@ func (e *enforcer) reapplyOwnAppID(ctx context.Context, generation uint64) (bool
 		e.mtx.Unlock()
 		return false, nil
 	}
+	if e.keyboardPaused {
+		defer e.mtx.Unlock()
+		if err := e.openURL(ctx, "steam://forceinputappid/"+strconv.FormatUint(uint64(e.ownAppID), 10)); err != nil {
+			return false, err
+		}
+		e.keyboardPaused = false
+		return true, nil
+	}
 	// Re-sending the same app ID can be ignored by Steam while a keyboard
 	// overlay still owns controller focus. Explicitly release the forced layout
 	// first, as SISR's successful shutdown cleanup does, then restore it.
@@ -112,6 +130,23 @@ func (e *enforcer) reapplyOwnAppID(ctx context.Context, generation uint64) (bool
 	}
 	slog.Debug("Reapplied SteamInput layout after keyboard closed")
 	return true, nil
+}
+
+// Temporarily release only SISR's own forced mapping. Keep the user's logical
+// choice and generation so an explicit layout change always wins over recovery.
+func (e *enforcer) pauseForKeyboard(ctx context.Context, generation uint64) error {
+	e.mtx.Lock()
+	defer e.mtx.Unlock()
+	if ctx.Err() != nil || e.noSteam || e.ownAppID == 0 || e.generation != generation ||
+		e.forcedAppID != e.ownAppID || e.keyboardPaused {
+		return nil
+	}
+	err := e.openURL(ctx, "steam://forceinputappid/0")
+	if err == nil {
+		e.keyboardPaused = true
+	}
+	logging.Diagnostic("keyboard_layout_suspended", map[string]any{"success": err == nil, "generation": generation})
+	return err
 }
 
 type keyboardRecovery struct {

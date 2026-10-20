@@ -134,15 +134,19 @@ jobs:
         uses: softprops/action-gh-release@v3.0.0
         with:
           tag_name: keyboard-recovery-test
-          name: SISR Rollback and Diagnostic Test Build
+          name: SISR Native Keyboard Routing Test Build
           prerelease: true
           make_latest: false
           body: |
-            Rollback and diagnostic Windows x64 build: `${{ github.sha }}`.
-            Restores pre-6e4bae1 behavior and adds automatic bounded logs in
+            Native keyboard routing Windows x64 test build: `${{ github.sha }}`.
+            Yields the forced controller layout to the standalone keyboard,
+            hides SISR's competing game overlay, and removes invasive menu
+            callbacks, selection resets and visibility changes.
+            Retains automatic bounded logs in
             SISR-diagnostics next to SISR.exe (fallback: LocalAppData/SISR/diagnostics).
             Includes a portable uninstaller and recording instructions.
-            The original keyboard/menu problems are not yet confirmed fixed.
+            Based on uploaded diagnostic traces; physical controller validation
+            is still required.
             This is not an official SISR release.
 
             Keep stable SISR installed. Extract this build to a separate folder,

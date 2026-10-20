@@ -50,7 +50,7 @@ func (s *SISR) Run(cfg config.Global) error {
 		slog.Info("Diagnostic log enabled", "path", logPath)
 		logging.Diagnostic("session_start", map[string]any{
 			"version": meta.Version, "pid": os.Getpid(),
-			"baseline": "a3593a2", "keyboard_mouse_emulation": s.KeyboardMouseEmulation,
+			"baseline": "native-keyboard-routing", "keyboard_mouse_emulation": s.KeyboardMouseEmulation,
 			"allow_desktop_layout": s.AllowSteamDesktopLayout, "no_steam": s.NoSteam,
 		})
 	}
@@ -201,9 +201,31 @@ func (s *SISR) Run(cfg config.Global) error {
 		keyboardCtx, cancelKeyboard := context.WithCancel(ctx)
 		keyboardDone := make(chan struct{})
 		observer := steam.NewKeyboardObserver(s.Steam)
+		steamCfg := s.Steam
+		gameID := os.Getenv("SteamOverlayGameId")
+		if gameID == "" {
+			gameID = os.Getenv("SteamGameId")
+		}
 		go func() {
 			defer close(keyboardDone)
-			bindingEnforcer.WatchKeyboard(keyboardCtx, observer.IsOpen)
+			lastRouted := false
+			routeKnown := false
+			bindingEnforcer.WatchKeyboard(keyboardCtx, func(ctx context.Context) (bool, error) {
+				open, err := observer.IsOpen(ctx)
+				if err != nil {
+					routeKnown = false
+					return false, err
+				}
+				if !routeKnown || open != lastRouted {
+					if routeErr := steam.RouteNativeKeyboard(ctx, &steamCfg, gameID, open); routeErr == nil {
+						lastRouted = open
+						routeKnown = true
+					} else {
+						logging.Diagnostic("native_keyboard_route_failed", map[string]any{"open": open, "error": routeErr.Error()})
+					}
+				}
+				return open, nil
+			})
 		}()
 		defer func() {
 			cancelKeyboard()
