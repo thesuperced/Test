@@ -5,6 +5,8 @@ import (
 	"log/slog"
 	"strconv"
 	"time"
+
+	"github.com/Alia5/SISR/logging"
 )
 
 const (
@@ -19,6 +21,7 @@ const (
 // or restarting CEF endpoint is not evidence that the keyboard closed.
 func (e *enforcer) WatchKeyboard(ctx context.Context, isOpen func(context.Context) (bool, error)) {
 	var state keyboardRecovery
+	lastOpen := false
 	cefUnavailable := false
 	for ctx.Err() == nil {
 		generation, enabled := e.keyboardRecoveryState()
@@ -35,10 +38,15 @@ func (e *enforcer) WatchKeyboard(ctx context.Context, isOpen func(context.Contex
 				}
 				cefUnavailable = true
 			} else if ctx.Err() == nil {
+				if open != lastOpen {
+					logging.Diagnostic("keyboard_observed", map[string]any{"open": open, "generation": generation})
+					lastOpen = open
+				}
 				cefUnavailable = false
 				if state.observe(now, open, generation) {
 					forceCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
 					applied, err := e.reapplyOwnAppID(forceCtx, generation)
+					logging.Diagnostic("keyboard_layout_recovery", map[string]any{"applied": applied, "success": err == nil, "generation": generation})
 					cancel()
 					state.attempts++
 					if err != nil {

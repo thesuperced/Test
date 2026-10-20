@@ -16,6 +16,8 @@ import (
 	"github.com/Alia5/SISR/helper"
 	"github.com/Alia5/SISR/input"
 	"github.com/Alia5/SISR/input/steaminputbindings"
+	"github.com/Alia5/SISR/logging"
+	"github.com/Alia5/SISR/meta"
 	"github.com/Alia5/SISR/sdl"
 	"github.com/Alia5/SISR/sdl/extras"
 	"github.com/Alia5/SISR/steam"
@@ -40,6 +42,18 @@ type SISR struct {
 }
 
 func (s *SISR) Run(cfg config.Global) error {
+	logPath, closeLog, logErr := logging.StartDiagnostics()
+	if logErr != nil {
+		slog.Warn("Cannot create diagnostic log", "error", logErr)
+	} else {
+		defer closeLog()
+		slog.Info("Diagnostic log enabled", "path", logPath)
+		logging.Diagnostic("session_start", map[string]any{
+			"version": meta.Version, "pid": os.Getpid(),
+			"baseline": "a3593a2", "keyboard_mouse_emulation": s.KeyboardMouseEmulation,
+			"allow_desktop_layout": s.AllowSteamDesktopLayout, "no_steam": s.NoSteam,
+		})
+	}
 	releaseInstance, err := acquireSingleInstance()
 	if err != nil {
 		return err
@@ -51,6 +65,22 @@ func (s *SISR) Run(cfg config.Global) error {
 		os.Interrupt, syscall.SIGTERM,
 	)
 	defer stop()
+	diagnosticCtx, cancelDiagnostics := context.WithCancel(ctx)
+	diagnosticSteam := s.Steam
+	diagnosticDone := make(chan struct{})
+	go func() {
+		defer close(diagnosticDone)
+		if !s.NoSteam {
+			resetCtx, cancel := context.WithTimeout(diagnosticCtx, 2*time.Second)
+			resetErr := steam.SetVirtualMenuVisibility(resetCtx, &diagnosticSteam, true)
+			cancel()
+			logging.Diagnostic("rollback_menu_override_reset", map[string]any{"success": resetErr == nil})
+			steam.WatchDiagnostics(diagnosticCtx, diagnosticSteam)
+		}
+	}()
+	focusDone := make(chan struct{})
+	go func() { defer close(focusDone); watchFocusDiagnostics(diagnosticCtx) }()
+	defer func() { cancelDiagnostics(); <-diagnosticDone; <-focusDone }()
 	defer s.cleanup(&s.Steam)
 
 	if s.MaxFPS == 0 {
@@ -194,14 +224,19 @@ func (s *SISR) Run(cfg config.Global) error {
 
 	if !s.AllowSteamDesktopLayout {
 		go func() {
-			select {
-			case <-ctx.Done():
-				return
-			case <-time.After(2 * time.Second):
+			// HACK: attempt to workaround possible bug in Steam where inputs might get stuck
+			time.Sleep(2 * time.Second)
+
+			err := bindingEnforcer.ForceInputAppID(0)
+			if err == nil {
+				select {
+				case <-ctx.Done():
+					return
+				case <-time.After(100 * time.Millisecond):
+				}
+				err = bindingEnforcer.ForceOwnAppID()
 			}
-			// Do not briefly enable the desktop layout while the user may
-			// already be opening a keyboard with the controller.
-			if err := bindingEnforcer.ForceOwnAppID(); err != nil {
+			if err != nil {
 				slog.Error("Failed to force SteamInput layout", "error", err)
 			}
 		}()
@@ -305,11 +340,6 @@ func (s *SISR) cleanup(c *config.Steam) {
 	if err != nil {
 		slog.Error("Failed to cleanup CEF payloads", "error", err)
 	}
-	restoreCtx, cancelRestore := context.WithTimeout(context.Background(), 3*time.Second)
-	if err := steam.RestoreVirtualMenus(restoreCtx, c); err != nil {
-		slog.Warn("Failed to restore Steam virtual menu visibility", "error", err)
-	}
-	cancelRestore()
 	err = helper.OpenURL("steam://forceinputappid/0")
 	if err != nil {
 		slog.Error("Failed to reset steam controller config", "error", err)

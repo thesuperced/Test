@@ -1,7 +1,16 @@
 import { client } from '$lib/api/client';
-import { readVirtualMenuEvent, VirtualMenuState } from '$lib/virtual-menu';
 
 __INJECT_RETURN = (async () => {
+    // Diagnostic side channel: metadata only, never keys or protobuf contents.
+    const diagnostic = (body: Record<string, unknown>) => {
+        void fetch('goTmpl(".SISRAPIURL")' + '/api/v1/steam/cef/diagnostics', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+            signal: AbortSignal.timeout(2000)
+        }).catch(() => {});
+    };
+    diagnostic({ kind: 'injection' });
     // Injected into "normal" overlay-tab or SharedJSContext
 
     if (!window.__sisrCleanup) {
@@ -13,74 +22,128 @@ __INJECT_RETURN = (async () => {
         window.__sisrCleanup.overlayCallback();
     }
 
-    window.__sisrCleanup.virtualMenuCallback?.();
+    let virtualMenuGeneration = 0;
+    let virtualMenuTimer: ReturnType<typeof setTimeout> | undefined;
+    const readVirtualMenuEvent = (message: unknown): {
+        created: boolean;
+        controllerIndex: number;
+        menuIndex: number;
+        key: string;
+    } | undefined => {
+        let bytes: Uint8Array;
+        if (message instanceof Uint8Array) {
+            bytes = message;
+        } else if (message instanceof ArrayBuffer) {
+            bytes = new Uint8Array(message);
+        } else if (ArrayBuffer.isView(message)) {
+            bytes = new Uint8Array(message.buffer, message.byteOffset, message.byteLength);
+        } else {
+            return undefined;
+        }
+        const fields = new Map<number, number>();
+        for (let offset = 0; offset < bytes.length;) {
+            let tag = 0;
+            let shift = 0;
+            while (offset < bytes.length) {
+                const value = bytes[offset++];
+                tag |= (value & 0x7f) << shift;
+                if ((value & 0x80) === 0) break;
+                shift += 7;
+                if (shift > 28) return undefined;
+            }
+            const field = tag >>> 3;
+            const wire = tag & 7;
+            if (wire === 0) {
+                let value = 0;
+                shift = 0;
+                while (offset < bytes.length) {
+                    const byte = bytes[offset++];
+                    value |= (byte & 0x7f) << shift;
+                    if ((byte & 0x80) === 0) break;
+                    shift += 7;
+                    if (shift > 28) return undefined;
+                }
+                fields.set(field, value);
+            } else if (wire === 1) {
+                offset += 8;
+            } else if (wire === 2) {
+                let length = 0;
+                shift = 0;
+                while (offset < bytes.length) {
+                    const byte = bytes[offset++];
+                    length |= (byte & 0x7f) << shift;
+                    if ((byte & 0x80) === 0) break;
+                    shift += 7;
+                    if (shift > 28) return undefined;
+                }
+                offset += length;
+            } else if (wire === 5) {
+                offset += 4;
+            } else {
+                return undefined;
+            }
+        }
+        const created = fields.get(1);
+        if (created === undefined) return undefined;
+        const controllerIndex = fields.get(2) ?? 0;
+        const menuIndex = fields.get(3) ?? 0;
+        return {
+            created: created !== 0,
+            controllerIndex,
+            menuIndex,
+            key: `${controllerIndex}:${menuIndex}`
+        };
+    };
+
     const input = window.SteamClient?.Input ?? (opener as SteamWindow)?.SteamClient?.Input;
-    const state = new VirtualMenuState();
-    let stopped = false;
-    let sending = false;
-    let revision = 0;
-    let lastSent: boolean | undefined;
-    let lastRefresh = 0;
-    const publish = (force = false) => {
-        const now = Date.now();
-        const visible = state.visible(now);
-        if (!force && visible === lastSent && (!visible || now - lastRefresh < 1000)) return;
-        lastSent = visible;
-        lastRefresh = now;
-        revision++;
-        if (sending) return;
-        sending = true;
-        // One request at a time, coalescing updates to the current state.
-        void (async () => {
-            try {
-                let sentRevision: number;
-                do {
-                    sentRevision = revision;
-                    if (stopped) return;
-                    const result = await client.POST('/api/v1/steam/cef/virtual-menu-visibility', {
-                        body: { visible: state.visible(Date.now()) },
-                        signal: AbortSignal.timeout(2500)
-                    });
-                    if (result.error) throw new Error('Virtual menu visibility request failed');
-                } while (sentRevision !== revision);
-            } catch (e) {
-                lastSent = undefined; // retry on the next watchdog tick
-                console.error('Virtual menu visibility update failed', e);
-            } finally {
-                sending = false;
-            }
-        })();
-    };
-    const registrations: { unregister?: () => void }[] = [];
-    // Only enable control if both lifecycle and touch-state notifications exist.
-    if (input?.RegisterForTouchMenuMessages && input?.RegisterForTouchMenuInputMessages) {
-        registrations.push(input.RegisterForTouchMenuMessages((message: unknown) => {
-            const event = readVirtualMenuEvent(message);
-            if (!event) return;
-            state.lifecycle(event.key, event.created);
-            publish(true);
-        }));
-        registrations.push(input.RegisterForTouchMenuInputMessages(
-            (controller, menu, _x, _y, active) => {
-                state.input(`${controller}:${menu}`, active, Date.now());
-                publish();
-            }
-        ));
-        publish(true);
+    const activeVirtualMenus = new Set<string>();
+    const virtualMenuRegistration = input?.RegisterForTouchMenuMessages?.((message: unknown) => {
+        const event = readVirtualMenuEvent(message);
+        diagnostic({
+            kind: 'menu_message', parsed: !!event,
+            messageType: typeof message,
+            length: typeof message === 'string' ? message.length
+                : ArrayBuffer.isView(message) ? message.byteLength
+                : message instanceof ArrayBuffer ? message.byteLength : 0
+        });
+        if (!event) return;
+        diagnostic({ kind: 'menu_lifecycle', controller: event.controllerIndex, menu: event.menuIndex, created: event.created });
+        const generation = ++virtualMenuGeneration;
+        if (virtualMenuTimer) clearTimeout(virtualMenuTimer);
+        if (event.created) {
+            activeVirtualMenus.add(event.key);
+            void client.POST('/api/v1/steam/cef/virtual-menu-visibility', {
+                body: { visible: true }
+            }).catch((e) => console.error('Error restoring virtual menu visibility', e));
+        } else {
+            // Steam removes the menu on an action-set change without clearing
+            // the selected radial segment. That stale selection consumes the
+            // later release and leaves the menu visible but produces no output.
+            input?.SetVirtualMenuKeySelected?.(event.controllerIndex, event.menuIndex, -1);
+            activeVirtualMenus.delete(event.key);
+            if (activeVirtualMenus.size > 0) return;
+            virtualMenuTimer = setTimeout(() => {
+                if (generation !== virtualMenuGeneration) return;
+                void client.POST('/api/v1/steam/cef/virtual-menu-visibility', {
+                    body: { visible: false }
+                })
+                    .catch((e) => console.error('Error clearing stale virtual menus', e));
+            }, 300);
+        }
+    });
+
+    if (virtualMenuRegistration) {
+        window.__sisrCleanup.virtualMenuCallback = () => {
+            if (virtualMenuTimer) clearTimeout(virtualMenuTimer);
+            virtualMenuRegistration.unregister?.();
+            delete window.__sisrCleanup?.virtualMenuCallback;
+        };
     }
-    const watchdog = setInterval(() => {
-        if (registrations.length) publish();
-    }, 250);
-    window.__sisrCleanup.virtualMenuCallback = () => {
-        stopped = true;
-        clearInterval(watchdog);
-        for (const registration of registrations) registration?.unregister?.();
-        delete window.__sisrCleanup?.virtualMenuCallback;
-    };
 
     if (steamClientOverlay) {
         const unregister = await steamClientOverlay.RegisterForOverlayActivated(
             (_a, _b, overlayOpen) => {
+                diagnostic({ kind: 'overlay', open: overlayOpen });
                 void client.POST('/api/v1/steam/cef/overlay-state-changed', {
                     body: {
                         open: overlayOpen

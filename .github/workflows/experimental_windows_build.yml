@@ -41,7 +41,6 @@ jobs:
         working-directory: cefpayloads
         run: |
           npm ci
-          node --test src/lib/virtual-menu.test.ts
           npm run build
 
       - name: Build UI
@@ -75,9 +74,7 @@ jobs:
 
       - name: Run focused recovery tests
         shell: bash
-        run: |
-          go test -race -count=1 ./input/steaminputbindings ./steam
-          go test -race -count=1 api/handler/steam/cef/overlay_state.go api/handler/steam/cef/overlay_state_test.go
+        run: go test -race -count=1 ./input/steaminputbindings ./steam ./logging
 
       - name: Build patched SISR
         shell: bash
@@ -119,7 +116,7 @@ jobs:
           run SISR-TEST-UNINSTALL.exe and follow its prompt. It preserves your
           stable installation and AppData configuration.
           EOF
-          cat docs/keyboard-menu-recovery-test.md >> dist/TEST-BUILD-README.txt
+          cat docs/diagnostic-recovery-build.md >> dist/TEST-BUILD-README.txt
           echo "Source commit: ${{ github.sha }}" >> dist/TEST-BUILD-README.txt
           cd dist
           sha256sum SISR.exe viiper.exe SISR-TEST-UNINSTALL.exe > SHA256SUMS.txt
@@ -137,17 +134,16 @@ jobs:
         uses: softprops/action-gh-release@v3.0.0
         with:
           tag_name: keyboard-recovery-test
-          name: SISR Keyboard and Virtual Menu Recovery Test Build
+          name: SISR Rollback and Diagnostic Test Build
           prerelease: true
           make_latest: false
           body: |
-            Experimental Windows x64 build: `${{ github.sha }}`.
-            Fixes duplicate overlay-state handling, removes the startup desktop-layout
-            reset, and replaces menu cleanup with touch-state tracking, correct
-            protobuf decoding and a five-second inactivity failsafe.
-            Includes a portable test-build uninstaller and hardware test instructions.
-            First-use duplicate keyboards and controller output still require
-            verification on the affected hardware. This is not an official SISR release.
+            Rollback and diagnostic Windows x64 build: `${{ github.sha }}`.
+            Restores pre-6e4bae1 behavior and adds automatic bounded logs in
+            SISR-diagnostics next to SISR.exe (fallback: LocalAppData/SISR/diagnostics).
+            Includes a portable uninstaller and recording instructions.
+            The original keyboard/menu problems are not yet confirmed fixed.
+            This is not an official SISR release.
 
             Keep stable SISR installed. Extract this build to a separate folder,
             fully exit stable SISR, and run only the test copy. Do not launch the

@@ -6,6 +6,7 @@ import (
 )
 
 func Register(a huma.API, c *cmd.SISRContext) {
+	registerDiagnostics(a)
 
 	registerOverlayStateChanged(a, c)
 	registerVirtualMenuVisibility(a, c)

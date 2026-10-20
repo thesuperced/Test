@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/Alia5/SISR/helper"
+	"github.com/Alia5/SISR/logging"
 )
 
 type Enforcer interface {
@@ -69,6 +70,7 @@ func (e *enforcer) ForceInputAppID(appID uint32) error {
 	}
 
 	err := e.openURL(context.Background(), "steam://forceinputappid/"+strconv.FormatUint(uint64(appID), 10))
+	logging.Diagnostic("force_layout", map[string]any{"app_id": appID, "success": err == nil})
 	if err != nil {
 		return err
 	}
@@ -93,6 +95,7 @@ func (e *enforcer) ForceOwnAppID() error {
 	slog.Info("Forcing SteamInput layout for own appID", "appID", e.ownAppID)
 
 	err := e.openURL(context.Background(), "steam://forceinputappid/"+strconv.FormatUint(uint64(e.ownAppID), 10))
+	logging.Diagnostic("force_own_layout", map[string]any{"app_id": e.ownAppID, "success": err == nil})
 	if err != nil {
 		return err
 	}

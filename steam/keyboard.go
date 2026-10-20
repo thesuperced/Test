@@ -2,11 +2,18 @@ package steam
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
-	"log/slog"
+	"fmt"
+	"net/http"
+	"net/url"
+	"strings"
 	"time"
 
 	"github.com/Alia5/SISR/config"
+	"github.com/Alia5/SISR/logging"
+	"github.com/coder/websocket"
+	"github.com/coder/websocket/wsjson"
 )
 
 const keyboardTargetTitle = "Steam Input On-screen Keyboard"
@@ -18,11 +25,10 @@ type KeyboardObserver struct {
 	cfg           config.Steam
 	port          uint16
 	nextDiscovery time.Time
-	keyboardCount int
 }
 
 func NewKeyboardObserver(cfg config.Steam) *KeyboardObserver {
-	return &KeyboardObserver{cfg: cfg, keyboardCount: -1}
+	return &KeyboardObserver{cfg: cfg}
 }
 
 func (o *KeyboardObserver) IsOpen(ctx context.Context) (bool, error) {
@@ -44,9 +50,12 @@ func (o *KeyboardObserver) IsOpen(ctx context.Context) (bool, error) {
 		return false, errors.New("Steam CEF has no targets")
 	}
 	keyboardTabs := keyboardTargets(tabs)
-	if len(keyboardTabs) != o.keyboardCount {
-		o.keyboardCount = len(keyboardTabs)
-		slog.Info("Steam keyboard target count changed", "count", o.keyboardCount)
+	if len(keyboardTabs) > 1 {
+		logging.Diagnostic("duplicate_keyboard_close_attempt", map[string]any{"count": len(keyboardTabs), "kept_target": keyboardTabs[0].ID})
+		if err := closeDuplicateKeyboardTargets(ctx, keyboardTabs); err != nil {
+			logging.Diagnostic("duplicate_keyboard_close_failed", nil)
+			return true, fmt.Errorf("close duplicate Steam keyboard target: %w", err)
+		}
 	}
 	return len(keyboardTabs) > 0, nil
 }
@@ -63,4 +72,44 @@ func keyboardTargets(tabs []TabInfo) []TabInfo {
 		}
 	}
 	return targets
+}
+
+// closeDuplicateKeyboardTargets preserves one keyboard and closes any extra
+// CEF pages. Duplicate keyboards can otherwise consume controller focus after
+// the visible keyboard is dismissed.
+func closeDuplicateKeyboardTargets(ctx context.Context, tabs []TabInfo) error {
+	if len(tabs) < 2 {
+		return nil
+	}
+	for _, tab := range tabs[1:] {
+		logging.Diagnostic("keyboard_page_close", map[string]any{"target": tab.ID})
+		if err := closeKeyboardTarget(ctx, tab.WebSocketDebuggerURL); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func closeKeyboardTarget(ctx context.Context, debuggerURL string) error {
+	u, err := url.Parse(debuggerURL)
+	if err != nil {
+		return err
+	}
+	if u.Scheme != "ws" && u.Scheme != "wss" {
+		return fmt.Errorf("unexpected debugger URL scheme %q", u.Scheme)
+	}
+	host := strings.ToLower(u.Hostname())
+	if host != "localhost" && host != "127.0.0.1" && host != "::1" {
+		return fmt.Errorf("refusing non-loopback debugger host %q", host)
+	}
+	conn, _, err := websocket.Dial(ctx, debuggerURL, &websocket.DialOptions{HTTPHeader: http.Header{}})
+	if err != nil {
+		return err
+	}
+	defer conn.CloseNow() //nolint:errcheck
+	return wsjson.Write(ctx, conn, struct {
+		ID     int             `json:"id"`
+		Method string          `json:"method"`
+		Params json.RawMessage `json:"params,omitempty"`
+	}{ID: 1, Method: "Page.close"})
 }

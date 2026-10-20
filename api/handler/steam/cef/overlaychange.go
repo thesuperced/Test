@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/Alia5/SISR/cmd"
+	"github.com/Alia5/SISR/logging"
 	"github.com/Alia5/SISR/sdl"
 	"github.com/Alia5/SISR/sdl/extras"
 	"github.com/Alia5/SISR/webview"
@@ -31,7 +32,8 @@ type OverlayChanged struct {
 
 func overlayStateChanged(c *cmd.SISRContext) func(ctx context.Context, req *OverlayChangedRequest) (*struct{}, error) {
 
-	var state overlaySnapshot
+	previousVisibility := false
+	previousHitTest := false
 
 	return func(ctx context.Context, req *OverlayChangedRequest) (*struct{}, error) {
 		c.Config.Lock()
@@ -42,15 +44,18 @@ func overlayStateChanged(c *cmd.SISRContext) func(ctx context.Context, req *Over
 			ctx,
 			c.WindowDispatcher,
 			func(w *sdl.Window, wv webview.WebView) error {
-				// Notifications can be duplicated (including after reinjection).
-				// Preserve the original state until the matching close edge.
-				if !state.transition(req.Body.Open, wv.Visible(), extras.GetWindowHitTest(w)) {
-					return nil
+				logging.Diagnostic("overlay_window_before", map[string]any{
+					"open": req.Body.Open, "webview_visible": wv.Visible(),
+					"mouse_hit_test": extras.GetWindowHitTest(w), "kbm": kbmEnabled,
+				})
+				if req.Body.Open {
+					previousVisibility = wv.Visible()
+					previousHitTest = extras.GetWindowHitTest(w)
 				}
 
 				slog.Debug("Overlay state changed",
-					"previousWebViewVisibility", state.visibility,
-					"previousCursorHitTest", state.hitTest,
+					"previousWebViewVisibility", previousVisibility,
+					"previousCursorHitTest", previousHitTest,
 					"newOverlayOpenState", req.Body.Open,
 				)
 
@@ -61,10 +66,10 @@ func overlayStateChanged(c *cmd.SISRContext) func(ctx context.Context, req *Over
 						slog.Error("Failed setting window cursor hittest", "error", err)
 					}
 				} else {
-					if state.visibility {
+					if previousVisibility {
 						wv.SetVisible(true)
 					}
-					targetHitTest := state.hitTest
+					targetHitTest := previousHitTest
 					if kbmEnabled {
 						targetHitTest = true
 					}
@@ -73,6 +78,10 @@ func overlayStateChanged(c *cmd.SISRContext) func(ctx context.Context, req *Over
 						slog.Error("Failed setting window cursor hittest", "error", err)
 					}
 				}
+				logging.Diagnostic("overlay_window_after", map[string]any{
+					"open": req.Body.Open, "webview_visible": wv.Visible(),
+					"mouse_hit_test": extras.GetWindowHitTest(w),
+				})
 				return nil
 			})
 		if dispatchErr != nil {

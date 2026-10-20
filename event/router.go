@@ -8,6 +8,7 @@ import (
 	"runtime/debug"
 
 	"github.com/Alia5/SISR/event/handler"
+	"github.com/Alia5/SISR/logging"
 	"github.com/Alia5/SISR/sdl"
 )
 
@@ -28,6 +29,13 @@ func NewRouter() Router {
 }
 
 func (r *router) RouteEvent(appCtx context.Context, ev sdl.Event) {
+	switch ev.Base().Type {
+	case sdl.EventTypeKeyDown, sdl.EventTypeKeyUp,
+		sdl.EventTypeGamepadButtonDown, sdl.EventTypeGamepadButtonUp,
+		sdl.EventTypeGamepadTouchpadDown, sdl.EventTypeGamepadTouchpadUp:
+		// Do not record button identities, key codes, text, or touch positions.
+		logging.Diagnostic("input_event", map[string]any{"kind": ev.Base().Type.String()})
+	}
 	ctx := context.WithValue(appCtx, "eventTime", ev.Base().Timestamp)
 	handlers := r.handlers[ev.Base().Type]
 	if len(handlers) > 0 {
