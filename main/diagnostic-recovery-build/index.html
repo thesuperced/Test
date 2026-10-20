@@ -23,7 +23,7 @@
     
     
       
-        <title>Keyboard/menu recovery test build - SISR Documentation</title>
+        <title>Rollback and diagnostic build - SISR Documentation</title>
       
     
     
@@ -76,7 +76,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#keyboardmenu-recovery-test-build" class="md-skip">
+        <a href="#rollback-and-diagnostic-build" class="md-skip">
           Skip to content
         </a>
       
@@ -113,7 +113,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Keyboard/menu recovery test build
+              Rollback and diagnostic build
             
           </span>
         </div>
@@ -1266,25 +1266,6 @@
     
   
   
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#hardware-acceptance-test" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Hardware acceptance test
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
 </nav>
                   </div>
                 </div>
@@ -1303,47 +1284,34 @@
   
 
 
-<h1 id="keyboardmenu-recovery-test-build">Keyboard/menu recovery test build</h1>
-<p>This revision fixes identified defects in the previous experimental patch.
-It has automated regression coverage, but needs testing on the affected Windows
-machine with its Steam Controller configuration.</p>
-<ul>
-<li>Duplicate overlay-open/close callbacks no longer overwrite the saved mouse
-  and webview state.</li>
-<li>Startup no longer briefly forces the desktop layout before the SISR layout.</li>
-<li>Keyboard observation no longer arbitrarily closes one of multiple CEF pages.
-  Target-count transitions are logged without keyboard contents.</li>
-<li>Menu lifecycle decoding accepts protobuf defaults, base64 and byte payloads;
-  malformed/truncated messages are ignored.</li>
-<li>Menu creation alone cannot show a menu. Fresh active touch is required.
-  Lifecycle changes cancel visible menus; interrupted touches must be released
-  before they can show a menu again. Reinjection unregisters old listeners.</li>
-<li>The patch no longer calls Steam's selection setter with an invented reset.</li>
-<li>Visibility updates are serialized and coalesced, and CDP results are checked.
-  An inactivity watchdog and a five-second lease in the menu page bound stale
-  displays when notifications/updates stop. Normal shutdown removes overrides.</li>
-</ul>
-<p>The watchdog can hide a stationary held menu after five seconds without input
-notifications. Release and touch again to reopen it. Continuous stale active
-notifications or a nonresponsive Steam renderer cannot be distinguished or
-repaired reliably with these hooks: this is not a guarantee for every Steam
-state, nor proof that the first-use duplicate keyboard is resolved.</p>
-<h2 id="hardware-acceptance-test">Hardware acceptance test</h2>
+<h1 id="rollback-and-diagnostic-build">Rollback and diagnostic build</h1>
+<p>Restores the behavior before revision 6e4bae1 (baseline a3593a2).
+The new menu touch gate and five-second watchdog have been removed.
+This is a recovery/diagnostic build, not a confirmed fix for the original
+duplicate-keyboard or radial-menu problems.</p>
 <ol>
-<li>Quit all SISR copies, extract the new ZIP into a separate folder, and reboot.</li>
-<li>Start Steam/controller, then only this SISR.exe. Open the keyboard once.
-   Check there is one keyboard, trackpads work, and dismissal restores input.</li>
-<li>Repeat keyboard open/close several times and type into Notepad.</li>
-<li>Hold a radial menu open, cycle through all action sets (including one without
-   a menu), release the pad, return and touch again. Confirm it hides on leaving,
-   reopens, sends the selected key to Notepad, then disappears on release.</li>
-<li>Repeat fast cycling and test both pads. Check the inactivity fallback by
-   holding still for over five seconds, then releasing and touching again.</li>
-<li>Quit this build and verify ordinary Steam input still works.</li>
+<li>Fully exit every SISR copy.</li>
+<li>Extract the entire ZIP to a new writable folder.</li>
+<li>Reboot once to clear the previous injected Steam callbacks and windows.</li>
+<li>Start Steam/controller and then this SISR.exe.</li>
+<li>Reproduce one keyboard open/close cycle, followed by one radial-menu
+   action-set cycle. Quit SISR.</li>
+<li>Open the SISR-diagnostics folder next to SISR.exe and send the newest
+   SISR-*.jsonl file in this chat. Each launch gets a separate file, so
+   also send the previous file if you restarted SISR during the test.</li>
 </ol>
-<p>If the duplicate keyboard recurs, retain the SISR log including startup and
-the first open/close cycle. The screenshot alone does not identify which Steam
-context owns either keyboard.</p>
+<p>If the application folder is not writable, logs go to
+%LOCALAPPDATA%\SISR\diagnostics instead. A log is capped at about 8 MB;
+restart SISR to create a new recording if the cap is reached.</p>
+<p>The dedicated log records build/version, keyboard/menu target identifiers,
+menu lifecycle metadata, requested visibility changes, foreground process
+names/window classes, overlay mouse handling, controller-layout resets, and
+input event types (key/button down/up and touchpad down/up, without identities).
+It does not record typed text, key contents, clipboard data, window titles,
+page contents, screenshots, or raw Steam message payloads.
+The file stays on your PC until you choose to send it.</p>
+<p>The uninstaller removes the portable program files, leaving diagnostic logs
+available to send. Delete the SISR-diagnostics folder manually when finished.</p>
 
 
 
