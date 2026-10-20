@@ -29,6 +29,15 @@ func TestIsVirtualMenuTab(t *testing.T) {
 	}
 }
 
+func TestHasVirtualMenuTab(t *testing.T) {
+	if hasVirtualMenuTab([]TabInfo{{Title: "SharedJSContext"}}) {
+		t.Fatal("found menu target")
+	}
+	if !hasVirtualMenuTab([]TabInfo{{Title: "virtualmenus_uid1"}}) {
+		t.Fatal("did not find menu target")
+	}
+}
+
 func TestSetVirtualMenuTabsVisibility(t *testing.T) {
 	requests := make(chan cdpRequest, 1)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

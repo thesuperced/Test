@@ -16,6 +16,7 @@ type Enforcer interface {
 	ForceInputAppID(appID uint32) error
 	ForceOwnAppID() error
 	WatchKeyboard(context.Context, func(context.Context) (bool, error))
+	SetInputIdle(func() bool)
 }
 
 type enforcer struct {
@@ -26,7 +27,14 @@ type enforcer struct {
 	keyboardPaused bool
 	openURL        func(context.Context, string) error
 
-	mtx sync.Mutex
+	mtx       sync.Mutex
+	inputIdle func() bool
+}
+
+func (e *enforcer) SetInputIdle(idle func() bool) {
+	e.mtx.Lock()
+	e.inputIdle = idle
+	e.mtx.Unlock()
 }
 
 func NewEnforcer(noSteam bool) Enforcer {

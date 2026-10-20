@@ -54,6 +54,13 @@ func (e *enforcer) WatchKeyboard(ctx context.Context, isOpen func(context.Contex
 					}
 				}
 				if state.observe(now, open, generation) {
+					e.mtx.Lock()
+					idle := e.inputIdle == nil || e.inputIdle()
+					e.mtx.Unlock()
+					if !idle {
+						state.due = time.Time{}
+						continue
+					}
 					forceCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
 					applied, err := e.reapplyOwnAppID(forceCtx, generation)
 					logging.Diagnostic("keyboard_layout_recovery", map[string]any{"applied": applied, "success": err == nil, "generation": generation})

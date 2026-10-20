@@ -15,8 +15,10 @@ This build yields SISR's forced controller layout while the native keyboard is
 open, hides only SISR's game overlay, and restores the mapping after a confirmed
 keyboard close. User-selected layout changes take precedence. Desktop mode
 keeps the hidden host click-through; keyboard/mouse emulation still captures.
-Steam owns radial-menu creation, selection and release again. The old global
-CSS watchdog, touch gate, selection resets and menu callbacks are absent.
+Steam owns radial-menu selection and release. SISR changes menu visibility only
+on Steam's completed create/destroy lifecycle notification. A create request
+waits for Steam to list that newly created CEF target; there is no arbitrary
+hide/show timer or synthetic selection reset.
 
 Tests validate routing, ownership, cancellation, transient CEF failure, and
 layout-generation guards. Physical controller behavior still needs validation.
@@ -43,7 +45,8 @@ It does not record typed text, key contents, clipboard data, window titles,
 page contents, screenshots, or raw Steam message payloads.
 The file stays on your PC until you choose to send it.
 
-New events include native_keyboard_route and keyboard_layout_suspended.
+New events include native_keyboard_route, keyboard_layout_suspended, and
+action_set_loaded.
 Native menu callbacks are no longer subscribed to just for logging; menu
 target metadata remains visible in cef_targets.
 

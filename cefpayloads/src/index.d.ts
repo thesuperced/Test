@@ -182,6 +182,9 @@ interface SteamClientInput {
     RegisterForTouchMenuMessages: (
         callback: (message: unknown) => void
     ) => { unregister?: () => void };
+    RegisterForActiveConfigLoadedMessages?: (
+        callback: (...args: unknown[]) => void
+    ) => { unregister?: () => void };
 }
 
 interface SteamClientSystemDisplay {

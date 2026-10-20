@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/Alia5/SISR/config"
 	"github.com/Alia5/SISR/logging"
@@ -22,15 +23,45 @@ type cdpRequest struct {
 	Params map[string]interface{} `json:"params,omitempty"`
 }
 
-// SetVirtualMenuVisibility hides or restores Steam's virtual-menu CEF targets
-// without closing them. Steam reuses these targets when an action set with a
-// virtual menu becomes active again.
+// SetVirtualMenuVisibility applies the completed lifecycle edge reported by
+// Steam. It never closes or reloads a target and has no timer-based behavior.
 func SetVirtualMenuVisibility(ctx context.Context, cfg *config.Steam, visible bool) error {
+	for {
+		tabs, err := GetCEFTabs(ctx, cfg)
+		if err != nil {
+			return err
+		}
+		if !visible || hasVirtualMenuTab(tabs) {
+			return setVirtualMenuTabsVisibility(ctx, tabs, visible)
+		}
+		// Steam sends the completed create edge before the reusable CEF target
+		// is listed. Wait for that same action's target, rather than guessing a
+		// hide/show delay in the UI.
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(50 * time.Millisecond):
+		}
+	}
+}
+
+// RestoreVirtualMenus removes SISR's CSS override on shutdown. It does not
+// change Steam's menu/action state.
+func RestoreVirtualMenus(ctx context.Context, cfg *config.Steam) error {
 	tabs, err := GetCEFTabs(ctx, cfg)
 	if err != nil {
 		return err
 	}
-	return setVirtualMenuTabsVisibility(ctx, tabs, visible)
+	return setVirtualMenuTabsVisibility(ctx, tabs, true)
+}
+
+func hasVirtualMenuTab(tabs []TabInfo) bool {
+	for _, tab := range tabs {
+		if isVirtualMenuTab(tab) {
+			return true
+		}
+	}
+	return false
 }
 
 func setVirtualMenuTabsVisibility(ctx context.Context, tabs []TabInfo, visible bool) error {

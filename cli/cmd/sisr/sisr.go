@@ -197,6 +197,13 @@ func (s *SISR) Run(cfg config.Global) error {
 		},
 	}
 
+	activity := &controllerActivity{}
+	bindingEnforcer.SetInputIdle(activity.idle)
+	if !s.NoSteam && !s.AllowSteamDesktopLayout {
+		if err := bindingEnforcer.ForceOwnAppID(); err != nil {
+			slog.Error("Failed to select SteamInput layout", "error", err)
+		}
+	}
 	if !s.NoSteam {
 		keyboardCtx, cancelKeyboard := context.WithCancel(ctx)
 		keyboardDone := make(chan struct{})
@@ -244,26 +251,6 @@ func (s *SISR) Run(cfg config.Global) error {
 
 	wv.Navigate(frontendAddr)
 
-	if !s.AllowSteamDesktopLayout {
-		go func() {
-			// HACK: attempt to workaround possible bug in Steam where inputs might get stuck
-			time.Sleep(2 * time.Second)
-
-			err := bindingEnforcer.ForceInputAppID(0)
-			if err == nil {
-				select {
-				case <-ctx.Done():
-					return
-				case <-time.After(100 * time.Millisecond):
-				}
-				err = bindingEnforcer.ForceOwnAppID()
-			}
-			if err != nil {
-				slog.Error("Failed to force SteamInput layout", "error", err)
-			}
-		}()
-	}
-
 	tray.Run(ctx, cmdCtx, trayNotifyCh)
 
 	go func() {
@@ -299,7 +286,7 @@ func (s *SISR) Run(cfg config.Global) error {
 		}()
 	}
 
-	return s.run(ctx, renderer, window, wv, eventRouter, winDispatcher)
+	return s.run(ctx, renderer, window, wv, eventRouter, winDispatcher, activity)
 }
 
 func (s *SISR) run(
@@ -309,6 +296,7 @@ func (s *SISR) run(
 	wv webview.WebView,
 	router event.Router,
 	dispatcher cmd.WindowDispatcher[any],
+	activity *controllerActivity,
 ) error {
 	for {
 		select {
@@ -318,8 +306,9 @@ func (s *SISR) run(
 		}
 		ev, _ := sdl.WaitEventTimeout(s.targetFrameDuration)
 		if ev != nil {
+			activity.observe(ev)
 			router.RouteEvent(ctx, ev)
-			drainEvents(ctx, router)
+			drainEvents(ctx, router, activity)
 		}
 		dispatcher.Dispatch(window, wv)
 		if time.Since(s.lastRenderTime) >= s.targetFrameDuration || ev == nil {
@@ -340,12 +329,13 @@ func (s *SISR) run(
 	}
 }
 
-func drainEvents(ctx context.Context, router event.Router) {
+func drainEvents(ctx context.Context, router event.Router, activity *controllerActivity) {
 	for {
 		ev, _ := sdl.PollEvent()
 		if ev == nil {
 			break
 		}
+		activity.observe(ev)
 		router.RouteEvent(ctx, ev)
 	}
 }
@@ -361,6 +351,9 @@ func (s *SISR) cleanup(c *config.Steam) {
 	err := cefpayloads.SISRCleanup(context.Background(), c)
 	if err != nil {
 		slog.Error("Failed to cleanup CEF payloads", "error", err)
+	}
+	if err := steam.RestoreVirtualMenus(context.Background(), c); err != nil {
+		slog.Debug("No virtual menu visibility override to restore", "error", err)
 	}
 	err = helper.OpenURL("steam://forceinputappid/0")
 	if err != nil {
