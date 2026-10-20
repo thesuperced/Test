@@ -182,6 +182,15 @@ interface SteamClientInput {
     RegisterForTouchMenuMessages: (
         callback: (message: unknown) => void
     ) => { unregister?: () => void };
+    RegisterForTouchMenuInputMessages?: (
+        callback: (
+            controllerIndex: number,
+            menuIndex: number,
+            x: number,
+            y: number,
+            active: boolean
+        ) => void
+    ) => { unregister?: () => void };
     RegisterForActiveConfigLoadedMessages?: (
         callback: (...args: unknown[]) => void
     ) => { unregister?: () => void };

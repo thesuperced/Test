@@ -208,30 +208,13 @@ func (s *SISR) Run(cfg config.Global) error {
 		keyboardCtx, cancelKeyboard := context.WithCancel(ctx)
 		keyboardDone := make(chan struct{})
 		observer := steam.NewKeyboardObserver(s.Steam)
-		steamCfg := s.Steam
-		gameID := os.Getenv("SteamOverlayGameId")
-		if gameID == "" {
-			gameID = os.Getenv("SteamGameId")
-		}
 		go func() {
 			defer close(keyboardDone)
-			lastRouted := false
-			routeKnown := false
 			bindingEnforcer.WatchKeyboard(keyboardCtx, func(ctx context.Context) (bool, error) {
-				open, err := observer.IsOpen(ctx)
-				if err != nil {
-					routeKnown = false
-					return false, err
-				}
-				if !routeKnown || open != lastRouted {
-					if routeErr := steam.RouteNativeKeyboard(ctx, &steamCfg, gameID, open); routeErr == nil {
-						lastRouted = open
-						routeKnown = true
-					} else {
-						logging.Diagnostic("native_keyboard_route_failed", map[string]any{"open": open, "error": routeErr.Error()})
-					}
-				}
-				return open, nil
+				// Steam owns the native keyboard. SISR only observes it so the
+				// forced input layout can be suspended during keyboard use; it
+				// never routes, hides, or creates another keyboard layer.
+				return observer.IsOpen(ctx)
 			})
 		}()
 		defer func() {
