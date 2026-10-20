@@ -57,11 +57,6 @@ let statusText = $state('');
 						loading = true;
 						statusText = 'Enabling CEF remote debugging...';
 						try {
-							await wrapClientError(client.POST('/api/v1/initial_launch'));
-						} catch (e) {
-							log.error('Failed to write initial launch marker file', 'error', e);
-						}
-						try {
 							await wrapClientError(client.POST('/api/v1/steam/enable-cef-remote-debugging'));
 						} catch (e) {
 							loading = false;
@@ -82,14 +77,25 @@ let statusText = $state('');
 							});
 							return;
 						}
-						statusText = 'Adding marker shortcut...';
+						statusText = 'Waiting for Steam, then adding marker shortcut...';
 						try {
 							await wrapClientError(client.POST('/api/v1/steam/cef/create-marker-shortcut'));
 						} catch (e) {
 							loading = false;
 							toast({
 								color: 'firebrick',
-								message: `Failed to add marker shortcut.\n Error: ${e}`
+								message: `Steam is not ready for marker creation. Switch Steam to Online Mode, wait for the Library to load, then try Setup Now again.\nDetails: ${e}`
+							});
+							return;
+						}
+						try {
+							await wrapClientError(client.POST('/api/v1/initial_launch'));
+						} catch (e) {
+							loading = false;
+							log.error('Failed to write initial launch marker file', 'error', e);
+							toast({
+								color: 'firebrick',
+								message: `Setup succeeded, but SISR could not save its completion marker.\nDetails: ${e}`
 							});
 							return;
 						}
